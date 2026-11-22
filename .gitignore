@@ -1,0 +1,19 @@
+# ---- personal data: never commit ----
+profile.md
+config.json
+state.json
+todos.json
+runtime.json
+notes.md
+snapshots/
+logs/
+.spotify_tokens.json
+.bedjet_id
+.chrome-profile/
+*.tmp
+# ---- build outputs (made by install.sh) ----
+bin/snap
+bin/*.app/
+# ---- misc ----
+.DS_Store
+__pycache__/

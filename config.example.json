@@ -1,0 +1,56 @@
+{
+  "calendars": [
+    {
+      "id": "you@example.com",
+      "label": "Personal"
+    },
+    {
+      "id": "you@work.example",
+      "label": "Work",
+      "work": true
+    }
+  ],
+  "location": {
+    "name": "Your City",
+    "lat": 40.71,
+    "lon": -74.01
+  },
+  "webcam_name": "",
+  "spotify_client_id": "",
+  "studio": {
+    "ssh_host": "studio",
+    "sleep_display_at_bedtime": false
+  },
+  "sleep_target_hours": 8,
+  "min_sleep_hours": 6.5,
+  "default_wake": "08:00",
+  "earliest_wake": "05:00",
+  "latest_wake": "09:00",
+  "default_bedtime": "00:00",
+  "morning_buffer_minutes": 75,
+  "commute_minutes_default": 30,
+  "airport": {
+    "travel_to_airport_minutes": 45,
+    "arrive_before_domestic_minutes": 90,
+    "arrive_before_international_minutes": 180,
+    "pack_and_get_ready_minutes": 60
+  },
+  "wind_down_minutes": 30,
+  "event_heads_up_minutes": 10,
+  "snooze_minutes": 9,
+  "alarm_sound": "/System/Library/Sounds/Glass.aiff",
+  "alarm_start_volume": 40,
+  "alarm_max_minutes": 15,
+  "bedjet_schedule": {
+    "enabled": false,
+    "pre_bed_minutes": 30,
+    "pre_bed_mode": "heat",
+    "pre_bed_temp_f": null,
+    "overnight_minutes": 120,
+    "overnight_mode": "cool",
+    "overnight_fan": 25,
+    "warm_before_wake": false,
+    "warm_minutes": 10,
+    "adapt_to_weather": true
+  }
+}

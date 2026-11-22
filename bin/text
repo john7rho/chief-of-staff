@@ -1,0 +1,35 @@
+#!/bin/bash
+# Send an iMessage (falls back to SMS via iPhone relay) from this Mac.
+# Usage: text "<phone or email>" "<message>"
+# Only ever run after the owner has approved the exact recipient + wording in chat.
+set -euo pipefail
+[ $# -eq 2 ] || { echo "usage: text <handle> <message>" >&2; exit 2; }
+osascript - "$1" "$2" <<'OSA'
+on acctFor(wanted)
+  tell application "Messages"
+    repeat with a in accounts
+      try
+        if ((service type of a) as string) is wanted and (enabled of a) then return a
+      end try
+    end repeat
+  end tell
+  return missing value
+end acctFor
+on run argv
+  set h to item 1 of argv
+  set m to item 2 of argv
+  set errs to ""
+  repeat with svcName in {"iMessage", "SMS"}
+    set a to my acctFor(svcName as string)
+    if a is not missing value then
+      try
+        tell application "Messages" to send m to participant h of a
+        return "sent via " & svcName & " to " & h
+      on error e
+        set errs to errs & svcName & ": " & e & "; "
+      end try
+    end if
+  end repeat
+  error "send failed: " & errs
+end run
+OSA

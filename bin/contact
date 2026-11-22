@@ -1,0 +1,21 @@
+#!/bin/bash
+# Look up phone numbers / emails for a contact name.  Usage: contact "Sam"
+osascript - "$1" <<'OSA'
+on run argv
+  set q to item 1 of argv
+  set out to ""
+  tell application "Contacts"
+    repeat with p in (every person whose name contains q)
+      set out to out & name of p & ":"
+      repeat with ph in phones of p
+        set out to out & " [" & (label of ph) & "] " & (value of ph)
+      end repeat
+      repeat with em in emails of p
+        set out to out & " [email] " & (value of em)
+      end repeat
+      set out to out & linefeed
+    end repeat
+  end tell
+  return out
+end run
+OSA

@@ -1,0 +1,13 @@
+#!/bin/bash
+# Take a webcam photo of the room. Prints the saved path.
+# usage: roomcheck [--baseline]
+set -euo pipefail
+D="$HOME/ChiefOfStaff/snapshots"; mkdir -p "$D"
+find "$D" -name 'room-*.jpg' -mtime +7 -delete 2>/dev/null || true
+if [ "${1:-}" = "--baseline" ]; then OUT="$D/baseline.jpg"; else OUT="$D/room-$(date +%Y%m%d-%H%M%S).jpg"; fi
+rm -f "$OUT"
+# Launch as its own app so macOS attributes camera permission to RoomCam
+CAM=$(/usr/bin/python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/ChiefOfStaff/config.json"))).get("webcam_name",""))' 2>/dev/null)
+open -W -n "$HOME/ChiefOfStaff/bin/RoomCam.app" --args --device "$CAM" --warmup 2.5 "$OUT"
+[ -s "$OUT" ] || { echo "capture failed (is Camera allowed for RoomCam in System Settings?)" >&2; exit 1; }
+echo "$OUT"

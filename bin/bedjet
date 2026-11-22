@@ -1,0 +1,5 @@
+#!/bin/bash
+# usage: bedjet scan|status|off|cool|heat|turbo|dry|ext-heat|temp <F>|fan <pct>|runtime <H:MM>
+OUT=$(mktemp -t bedjet); trap 'rm -f "$OUT"' EXIT
+open -W -n "$HOME/ChiefOfStaff/bin/BedJetCtl.app" --args --out "$OUT" "$@"
+cat "$OUT"; grep -q '^ok\|^connected\|id=' "$OUT"

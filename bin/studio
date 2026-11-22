@@ -1,0 +1,9 @@
+#!/bin/bash
+# Control a second Mac (e.g. a Mac Studio) over SSH via the `studio` alias in ~/.ssh/config.  Usage: studio sleep-display | wake-display | status | run "<cmd>"
+case "$1" in
+  sleep-display) ssh -o BatchMode=yes studio 'pmset displaysleepnow' ;;
+  wake-display)  ssh -o BatchMode=yes studio 'caffeinate -u -t 2' ;;
+  status)        ssh -o BatchMode=yes studio 'hostname; pmset -g | grep -E "displaysleep|sleep "' ;;
+  run)           shift; ssh -o BatchMode=yes studio "$@" ;;
+  *) echo "usage: studio sleep-display|wake-display|status|run <cmd>" >&2; exit 2 ;;
+esac

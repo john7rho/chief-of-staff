@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chief of Staff</title>
+<style>
+  :root {
+    --text: #f2f4f7; --muted: rgba(235,240,248,.62); --dim: rgba(235,240,248,.38);
+    --line: rgba(255,255,255,.09); --well: rgba(0,0,0,.22); --glass-border: rgba(255,255,255,.14);
+    --accent: #7cc4ff; --warn: #ffb35c; --good: #6fd39a; --bad: #ff6b6b;
+    --work: #a98bff; --personal: #7cc4ff; --travel: #ffb35c; --hold: rgba(255,255,255,.18);
+    --warm: #ff9a5c; --sleep: #6d7cff;
+    --gap: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: #07090d; }
+  body { min-height: 100vh; color: var(--text); padding: 20px; position: relative;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+  .num { font-variant-numeric: tabular-nums; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+
+  /* ambient glow behind the glass */
+  .ambient { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: radial-gradient(140% 100% at 50% 0%, #121826 0%, #07090d 70%); }
+  .ambient i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5; animation: drift 40s ease-in-out infinite alternate; }
+  .ambient i:nth-child(1) { width: 60vmax; height: 60vmax; left: -20vmax; top: -25vmax; background: #2c5cff; }
+  .ambient i:nth-child(2) { width: 45vmax; height: 45vmax; right: -15vmax; top: 20vh; background: #8a4dff; animation-duration: 48s; }
+  .ambient i:nth-child(3) { width: 50vmax; height: 50vmax; left: 20vw; bottom: -30vmax; background: #00b3a4; opacity: .32; animation-duration: 55s; }
+  @keyframes drift { to { transform: translate(5vw, 4vh) scale(1.1); } }
+  .wrap { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--gap); }
+
+  /* glass */
+  .card { position: relative; border-radius: 20px; padding: 16px 18px; overflow: hidden;
+    background: linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
+    box-shadow: 0 1px 0 rgba(255,255,255,.12) inset, 0 18px 40px -20px rgba(0,0,0,.6); }
+  .card h2 { font-size: 11px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card h2 small { font-size: 11px; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--dim); }
+  .empty { color: var(--dim); }
+
+  /* header */
+  header { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  #clock { font-size: 52px; font-weight: 300; letter-spacing: -2px; line-height: 1; }
+  #date { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  #headline { flex: 1 1 280px; font-size: 16px; font-weight: 500; line-height: 1.35; }
+  #headline:empty { display: none; }
+
+  /* layout grid: tuned for the Claude preview pane, scales up for full screen */
+  main { display: grid; gap: var(--gap); align-items: start;
+    grid-template-columns: 1fr; grid-template-areas: "now" "sleep" "day" "prio" "todo" "music" "up" "inbox"; }
+  @media (min-width: 640px) {
+    main { grid-template-columns: 1fr 1fr;
+      grid-template-areas: "now sleep" "day day" "prio todo" "music up" "inbox inbox"; }
+  }
+  @media (min-width: 1080px) {
+    main { grid-template-columns: 1.2fr 1fr 1fr;
+      grid-template-areas: "now sleep sleep" "day day day" "prio todo music" "up up inbox"; }
+  }
+  #now { grid-area: now; } #sleep { grid-area: sleep; } #day { grid-area: day; } #prioCard { grid-area: prio; }
+  #todoCard { grid-area: todo; } #spotify { grid-area: music; } #upCard { grid-area: up; } #inboxCard { grid-area: inbox; }
+  .hidden { display: none !important; }
+
+  /* now / next */
+  #now .lbl { font-size: 11px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); }
+  #now .big { font-size: 40px; font-weight: 300; letter-spacing: -1px; line-height: 1.1; margin: 6px 0 2px; color: var(--accent); }
+  #now .what { font-size: 17px; font-weight: 600; }
+  #now .when { color: var(--muted); font-size: 13px; }
+  #now .bar { height: 5px; border-radius: 3px; background: var(--well); margin: 10px 0 4px; overflow: hidden; }
+  #now .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  #now .focus { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  a.join { display: inline-block; margin-top: 10px; background: var(--accent); color: #07090d; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 99px; text-decoration: none; }
+
+  /* sleep */
+  .sleepnums { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; }
+  .sleepnums .k { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+  .sleepnums .v { font-size: 30px; font-weight: 300; letter-spacing: -.5px; line-height: 1.1; }
+  .sleepnums .hrs { margin-left: auto; text-align: right; }
+  .sleepnums .hrs .v { color: var(--sleep); }
+  .sbar { position: relative; height: 12px; border-radius: 6px; background: var(--well); margin: 14px 0 6px; overflow: hidden; display: flex; }
+  .sbar .warm { background: linear-gradient(90deg, #ff7a3d, var(--warm)); }
+  .sbar .cool { background: linear-gradient(90deg, #4fb6ff, #6d9cff); }
+  .sbar .zz { background: linear-gradient(90deg, #6d7cff, #9b6dff); flex: 1; }
+  .slegend { display: flex; gap: 14px; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+  .slegend b { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+  .pill { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: rgba(111,211,154,.16); color: var(--good); text-transform: none; letter-spacing: 0; }
+  .pill.off { background: rgba(255,107,107,.16); color: var(--bad); }
+
+  /* day timeline */
+  .tabs { display: inline-flex; background: var(--well); border-radius: 99px; padding: 3px; gap: 2px; }
+  .tabs button { font-size: 11px; font-weight: 600; letter-spacing: .5px; padding: 4px 12px; border-radius: 99px; color: var(--muted); text-transform: none; }
+  .tabs button.on { background: rgba(255,255,255,.14); color: var(--text); }
+  .stats { display: flex; gap: 22px; margin-bottom: 12px; flex-wrap: wrap; }
+  .stats div { display: flex; flex-direction: column; }
+  .stats b { font-size: 22px; font-weight: 300; line-height: 1.1; }
+  .stats span { font-size: 11px; color: var(--dim); }
+  .tl { position: relative; border-radius: 10px; background: var(--well); overflow: hidden; }
+  .tl .ev { position: absolute; border-radius: 6px; padding: 3px 6px; font-size: 11px; font-weight: 600; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(7,9,13,.9); cursor: default; }
+  .tl .ev.work { background: var(--work); } .tl .ev.personal { background: var(--personal); }
+  .tl .ev.travel, .tl .ev.flight { background: var(--travel); }
+  .tl .ev.hold { background: transparent; border: 1px dashed var(--hold); color: var(--dim); }
+  .tl .ev.past { opacity: .35; }
+  .tl .nowline { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 10px #fff; z-index: 2; }
+  .ticks { position: relative; height: 16px; margin-top: 4px; font-size: 10px; color: var(--dim); }
+  .ticks span { position: absolute; transform: translateX(-50%); }
+  .upnext { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .chip { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border-radius: 12px; background: rgba(255,255,255,.06); border: 1px solid var(--line); max-width: 260px; }
+  .chip .t { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 8px; background: var(--well); white-space: nowrap; }
+  .chip .n { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  /* priorities */
+  ol.prio { list-style: none; counter-reset: p; display: flex; flex-direction: column; gap: 8px; }
+  ol.prio li { counter-increment: p; display: flex; gap: 10px; align-items: flex-start; font-weight: 500; }
+  ol.prio li::before { content: counter(p); flex: none; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+    background: rgba(124,196,255,.15); color: var(--accent); font-size: 12px; font-weight: 700; }
+
+  /* todos */
+  ul.todos { list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  ul.todos li { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  ul.todos .cb { width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid var(--dim); flex: none; margin-top: 1px; display: grid; place-items: center; font-size: 11px; color: #07090d; }
+  ul.todos li.done { color: var(--dim); text-decoration: line-through; }
+  ul.todos li.done .cb { background: var(--good); border-color: var(--good); }
+  input.field, select.field { width: 100%; background: var(--well); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 13px; outline: none; }
+  input.field:focus { border-color: rgba(124,196,255,.5); }
+  #addTodo { margin-top: 10px; }
+
+  /* music */
+  .np { display: flex; gap: 12px; align-items: center; }
+  .art { width: 52px; height: 52px; border-radius: 10px; background: var(--well); object-fit: cover; flex: none; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .np .meta { min-width: 0; flex: 1; }
+  .np .tt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .ar { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prog { height: 3px; border-radius: 2px; background: var(--well); margin: 10px 0; overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--good); }
+  .ctl { display: flex; align-items: center; gap: 6px; }
+  .ctl button { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.08); display: grid; place-items: center; }
+  .ctl button.pp { width: 40px; height: 40px; background: var(--good); color: #07090d; }
+  .ctl svg { width: 14px; height: 14px; fill: currentColor; }
+  .ctl input[type=range] { flex: 1; accent-color: var(--good); min-width: 60px; }
+  .sel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  #spQ { margin-top: 8px; }
+  #spResults { max-height: 200px; overflow-y: auto; }
+  #spResults .r { display: flex; gap: 10px; align-items: center; padding: 5px; border-radius: 8px; cursor: pointer; }
+  #spResults .r:hover { background: rgba(255,255,255,.07); }
+  #spResults .r img, #spResults .r .ph { width: 30px; height: 30px; border-radius: 6px; background: var(--well); flex: none; }
+  #spResults .r .k { font-size: 9.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .8px; }
+  a.btn { display: inline-block; background: var(--good); color: #07090d; font-weight: 700; font-size: 13px; padding: 7px 14px; border-radius: 99px; text-decoration: none; }
+
+  /* coming up */
+  .ups { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+  .up { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); min-width: 0; }
+  .dbadge { flex: none; width: 40px; text-align: center; border-radius: 9px; background: var(--well); padding: 3px 0; line-height: 1.1; }
+  .dbadge b { display: block; font-size: 16px; font-weight: 600; } .dbadge span { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .8px; }
+  .up .ic { font-size: 16px; flex: none; }
+  .up .n { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  /* inbox */
+  .mail { display: flex; flex-direction: column; gap: 6px; }
+  .mail a { display: flex; gap: 8px; color: inherit; text-decoration: none; font-size: 13px; }
+  .mail a b { flex: none; }
+
+  /* footer */
+  footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--dim); }
+  footer .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  footer button { padding: 4px 10px; border-radius: 99px; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--muted); font-size: 11.5px; }
+  .warnchip { color: var(--warn); background: rgba(255,179,92,.12); border: 1px solid rgba(255,179,92,.25); padding: 3px 10px; border-radius: 99px; }
+
+  /* weather header */
+  #wx { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 10px; border-radius: 18px; margin-left: auto;
+    background: linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03)); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); }
+  #wx:empty { display: none; }
+  #wx .ico { font-size: 38px; line-height: 1; filter: drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+  #wx .tmp { font-size: 34px; font-weight: 300; letter-spacing: -1px; line-height: 1; }
+  #wx .sub { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  #wx .wear { display: inline-flex; align-items: center; gap: 5px; margin-top: 3px; font-size: 12px; font-weight: 600; color: var(--text);
+    background: rgba(255,255,255,.08); padding: 2px 9px; border-radius: 99px; }
+  .rainbars { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-top: 4px; }
+  .rainbars i { width: 5px; border-radius: 2px; background: #5aa8ff; opacity: .85; min-height: 2px; }
+
+  /* alert banner */
+  #alerts { display: flex; flex-direction: column; gap: 8px; }
+  #alerts:empty { display: none; }
+  .alert { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-radius: 16px;
+    background: linear-gradient(160deg, rgba(255,90,90,.22), rgba(255,90,90,.08)); border: 1px solid rgba(255,120,120,.45);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+  .alert.moderate, .alert.minor { background: linear-gradient(160deg, rgba(255,179,92,.20), rgba(255,179,92,.06)); border-color: rgba(255,179,92,.4); }
+  .alert .ai { font-size: 26px; flex: none; }
+  .alert b { font-size: 14px; } .alert .as { font-size: 12.5px; color: var(--muted); }
+  .alert .act { margin-left: auto; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text); background: rgba(255,255,255,.1); padding: 4px 10px; border-radius: 99px; }
+
+  /* weather-driven background */
+  .wxfx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  body.wx-rain .ambient i:nth-child(1), body.wx-storm .ambient i:nth-child(1) { background: #1f4fa8; }
+  body.wx-rain .ambient i:nth-child(2), body.wx-storm .ambient i:nth-child(2) { background: #2b6f8f; }
+  body.wx-cloudy .ambient i:nth-child(1), body.wx-fog .ambient i:nth-child(1) { background: #4a5a78; }
+  body.wx-cloudy .ambient i:nth-child(2), body.wx-fog .ambient i:nth-child(2) { background: #5b5f80; }
+  body.wx-cloudy .ambient i:nth-child(3), body.wx-fog .ambient i:nth-child(3) { background: #3d6a74; }
+  body.wx-clear.wx-day .ambient i:nth-child(1) { background: #2f7bff; }
+  body.wx-clear.wx-day .ambient i:nth-child(2) { background: #ffb347; opacity: .45; }
+  body.wx-night .ambient i:nth-child(1) { background: #1b2a6b; } body.wx-night .ambient i:nth-child(2) { background: #3b2a7a; }
+  /* rain */
+  .wxfx .rain { position: absolute; inset: -20% -10%; display: none;
+    background-image: repeating-linear-gradient(103deg, transparent 0 18px, rgba(170,200,255,.16) 18px 19px, transparent 19px 46px),
+                      repeating-linear-gradient(100deg, transparent 0 31px, rgba(170,200,255,.10) 31px 32px, transparent 32px 70px);
+    background-size: 100% 140px, 100% 220px; animation: rain .55s linear infinite; }
+  body.wx-rain .wxfx .rain, body.wx-storm .wxfx .rain { display: block; }
+  @keyframes rain { to { background-position: -30px 140px, -40px 220px; } }
+  body.wx-storm .wxfx { animation: flash 9s infinite; }
+  @keyframes flash { 0%, 92%, 96%, 100% { background: transparent; } 93%, 95% { background: rgba(200,220,255,.08); } }
+  /* sun */
+  .wxfx .sun { position: absolute; width: 70vmax; height: 70vmax; right: -25vmax; top: -30vmax; border-radius: 50%; display: none;
+    background: radial-gradient(circle, rgba(255,214,120,.38), rgba(255,170,60,.12) 40%, transparent 68%); animation: pulse 8s ease-in-out infinite alternate; }
+  body.wx-clear.wx-day .wxfx .sun { display: block; }
+  @keyframes pulse { to { transform: scale(1.08); opacity: .8; } }
+  /* clouds / fog */
+  .wxfx .cloud { position: absolute; display: none; border-radius: 50%; filter: blur(40px); background: rgba(200,210,230,.10); animation: float 70s linear infinite; }
+  .wxfx .cloud:nth-of-type(3) { width: 55vw; height: 22vh; top: 6vh; left: -60vw; }
+  .wxfx .cloud:nth-of-type(4) { width: 45vw; height: 18vh; top: 38vh; left: -50vw; animation-duration: 95s; animation-delay: -40s; }
+  .wxfx .cloud:nth-of-type(5) { width: 60vw; height: 25vh; top: 68vh; left: -65vw; animation-duration: 120s; animation-delay: -70s; }
+  body.wx-cloudy .wxfx .cloud, body.wx-rain .wxfx .cloud, body.wx-storm .wxfx .cloud { display: block; }
+  body.wx-fog .wxfx .cloud { display: block; background: rgba(220,225,235,.16); filter: blur(60px); }
+  @keyframes float { to { transform: translateX(180vw); } }
+  /* snow */
+  .wxfx .snow { position: absolute; inset: -10%; display: none; animation: snow 14s linear infinite;
+    background-image: radial-gradient(2px 2px at 20px 30px, #fff, transparent), radial-gradient(2px 2px at 90px 120px, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 160px 60px, #fff, transparent), radial-gradient(2.5px 2.5px at 230px 160px, #fff, transparent);
+    background-size: 260px 200px; opacity: .55; }
+  body.wx-snow .wxfx .snow { display: block; }
+  @keyframes snow { to { background-position: 60px 400px; } }
+  /* stars at night when clear */
+  .wxfx .stars { position: absolute; inset: 0; display: none; opacity: .5;
+    background-image: radial-gradient(1px 1px at 10% 20%, #fff, transparent), radial-gradient(1px 1px at 30% 70%, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 55% 15%, #fff, transparent), radial-gradient(1px 1px at 75% 45%, #fff, transparent),
+      radial-gradient(1px 1px at 90% 80%, #fff, transparent), radial-gradient(1.5px 1.5px at 45% 90%, #fff, transparent); }
+  body.wx-clear.wx-night .wxfx .stars { display: block; }
+  @media (prefers-reduced-motion: reduce) { .wxfx *, .ambient i { animation: none !important; } }
+
+  /* icons */
+  .hi { font-size: 13px; margin-right: 2px; filter: saturate(1.1); }
+  .card h2 .hi { font-size: 14px; letter-spacing: 0; }
+  .chip .ei, .up .ic { font-size: 15px; flex: none; }
+  .tl .ev .ei { margin-right: 3px; }
+  #now .bigico { font-size: 34px; float: right; line-height: 1; filter: drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+  .stats div { flex-direction: row !important; align-items: center; gap: 8px; }
+  .stats .si { font-size: 20px; }
+  .stats .sv { display: flex; flex-direction: column; }
+
+  /* night */
+  #nightView { display: none; }
+  body.night main, body.night #headline { display: none; }
+  body.night #nightView { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 55vh; color: var(--dim); }
+  body.night #nightView .a { font-size: 64px; font-weight: 200; color: rgba(235,240,248,.7); }
+  body.night .ambient i { opacity: .1; }
+  body.night #clock { color: var(--dim); }
+
+  /* alarm overlay */
+  #ring { position: fixed; inset: 0; z-index: 10; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; padding: 20px;
+    background: rgba(8,10,13,.55); backdrop-filter: blur(40px) saturate(150%); -webkit-backdrop-filter: blur(40px) saturate(150%); }
+  #ring.on { display: flex; }
+  #ring h1 { font-size: clamp(56px, 14vw, 110px); font-weight: 200; letter-spacing: -3px; }
+  #ring p { color: var(--muted); font-size: 18px; max-width: 560px; }
+  #ring .btns { display: flex; gap: 12px; }
+  #ring button { font-size: 20px; font-weight: 600; padding: 16px 36px; border-radius: 16px; }
+  #ring .snooze { background: rgba(255,255,255,.12); border: 1px solid var(--glass-border); }
+  #ring .dismiss { background: var(--accent); color: #07090d; }
+</style>
+</head>
+<body>
+<div class="ambient"><i></i><i></i><i></i></div>
+<div class="wxfx"><div class="sun"></div><div class="stars"></div><div class="cloud"></div><div class="cloud"></div><div class="cloud"></div><div class="rain"></div><div class="snow"></div></div>
+<div class="wrap">
+  <header>
+    <div><div id="clock" class="num">--:--</div><div id="date"></div></div>
+    <div id="headline"></div>
+    <div id="wx"></div>
+  </header>
+
+  <div id="alerts"></div>
+  <main>
+    <section class="card" id="now"></section>
+    <section class="card" id="sleep"><h2><span><span class="hi">🌙</span> Tonight</span> <span id="alarmPill"></span></h2><div id="sleepBody"></div></section>
+    <section class="card" id="day">
+      <h2><span class="tabs"><button data-d="today" class="on">📅 Today</button><button data-d="tomorrow">🌅 Tomorrow</button></span><small id="dayDate"></small></h2>
+      <div class="stats" id="dayStats"></div>
+      <div class="tl" id="tl"></div>
+      <div class="ticks" id="ticks"></div>
+      <div class="upnext" id="upnext"></div>
+    </section>
+    <section class="card" id="prioCard"><h2><span><span class="hi">🎯</span> Focus</span></h2><ol class="prio" id="prio"></ol></section>
+    <section class="card" id="todoCard"><h2><span><span class="hi">✅</span> To-do</span> <small id="todoCount"></small></h2><ul class="todos" id="todos"></ul>
+      <input id="addTodo" class="field" placeholder="+ Add a to-do"></section>
+    <section class="card" id="spotify"><h2><span><span class="hi">🎵</span> Music</span> <small id="spDevName"></small></h2><div id="spBody"></div></section>
+    <section class="card" id="upCard"><h2><span><span class="hi">🧭</span> Coming up</span></h2><div class="ups" id="upcoming"></div></section>
+    <section class="card hidden" id="inboxCard"><h2><span><span class="hi">✉️</span> Needs a reply</span></h2><div class="mail" id="inbox"></div></section>
+  </main>
+
+  <div id="nightView"><div>Alarm</div><div class="a num" id="nightAlarm">—</div><div id="nightFirst"></div></div>
+
+  <footer>
+    <div id="synced">Never synced</div>
+    <div class="acts">
+      <span id="warnings"></span>
+      <button id="dayBtn" title="Show the full dashboard during night mode">☀️ Day view</button>
+      <button id="studioBtn" title="Put the Mac Studio's display to sleep">🖥️ Studio off</button>
+      <button id="testBtn">🔔 Test alarm</button>
+    </div>
+  </footer>
+</div>
+
+<div id="ring">
+  <h1 class="num" id="ringClock"></h1>
+  <p id="ringMsg"></p>
+  <div class="btns"><button class="snooze" id="snoozeBtn">Snooze</button><button class="dismiss" id="dismissBtn">I'm up</button></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let state = {}, todos = [], forceDay = false, dayTab = "today";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const d = s => s ? new Date(s) : null;
+const tm = dt => dt ? dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—";
+const tmShort = dt => dt ? dt.toLocaleTimeString([], { hour: "numeric", minute: dt.getMinutes() ? "2-digit" : undefined }).replace(" ", "").toLowerCase() : "";
+function dur(ms) { const m = Math.max(0, Math.round(ms / 60000)); if (m < 60) return `${m}m`; const h = Math.floor(m / 60), r = m % 60; return r ? `${h}h ${r}m` : `${h}h`; }
+function ago(dt) { const m = Math.round((Date.now() - dt) / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; }
+async function getJSON(u, fb) { try { const r = await fetch(u + (u.includes("?") ? "&" : "?") + "t=" + Date.now()); return r.ok ? await r.json() : fb; } catch { return fb; } }
+async function post(u, body = {}) { return fetch(u, { method: "POST", headers: { "Content-Type": "application/json", "X-CoS": "1" }, body: JSON.stringify(body) }); }
+
+const isHold = e => /^\(hold\)|commute|lunch/i.test(e.title || "");
+const evClass = e => isHold(e) ? "hold" : (e.kind === "flight" || e.kind === "travel") ? "travel" : (e.work ? "work" : "personal");
+const colorOf = e => ({ hold: "rgba(255,255,255,.35)", travel: "var(--travel)", work: "var(--work)", personal: "var(--personal)" }[evClass(e)]);
+function evIcon(e) {
+  const t = (e.title || "").toLowerCase(), loc = (e.location || "").toLowerCase();
+  if (e.kind === "flight" || /flight|✈/.test(t)) return "✈️";
+  if (/check.?in/.test(t)) return "🎫";
+  if (/blood|doctor|dentist|clinic|test|medical|therapy/.test(t)) return "🩸";
+  if (/squash|tennis|gym|workout|run|yoga|climb|lesson/.test(t)) return "🎾";
+  if (/lunch|dinner|breakfast|brunch/.test(t)) return "🍽️";
+  if (/coffee/.test(t)) return "☕";
+  if (/commute|transit|drive|uber/.test(t)) return "🚶";
+  if (/prep|focus|deep work|hold/.test(t)) return "🧠";
+  if (/deal|pipeline|sourcing|investor/.test(t)) return "💼";
+  if (/intro/.test(t)) return "🤝";
+  if (/1on1|1:1|catch.?up/.test(t)) return "👥";
+  if (/phone|call to|\+?\d{3}[- ]\d{3}/.test(loc) || /reference call/.test(t)) return "📞";
+  if (e.link || /zoom|meet/.test(loc)) return "🎥";
+  if (loc) return "📍";
+  return "📅";
+}
+const iconOf = t => /thanksgiving|holiday|closed/i.test(t) ? "🦃" : /birthday/i.test(t) ? "🎂" : /^(tue|wed|mon|thu|fri|sat|sun)\b.*meetings/i.test(t) ? "📆" : evIcon({ title: t });
+
+/* ---------- now / next ---------- */
+function renderNow(now) {
+  const evs = (state.today || []).concat(state.tomorrow || []).filter(e => !e.all_day && e.start && !isHold(e));
+  const cur = evs.find(e => d(e.start) <= now && now < d(e.end));
+  const next = evs.find(e => d(e.start) > now);
+  let h = "";
+  if (cur) {
+    const p = 100 * (now - d(cur.start)) / (d(cur.end) - d(cur.start));
+    h += `<span class="bigico">${evIcon(cur)}</span><div class="lbl">Now · ${dur(d(cur.end) - now)} left</div><div class="what" style="margin-top:6px;font-size:20px">${esc(cur.title)}</div>
+          <div class="bar"><i style="width:${p}%"></i></div>${cur.link ? `<a class="join" href="${esc(cur.link)}" target="_blank">Join call</a>` : ""}`;
+    if (next) h += `<div class="focus">Then <b>${esc(next.title)}</b> at ${tm(d(next.start))}</div>`;
+  } else if (next) {
+    h += `<span class="bigico">${evIcon(next)}</span><div class="lbl">Next up in</div><div class="big num">${dur(d(next.start) - now)}</div>
+          <div class="what">${esc(next.title)}</div><div class="when">${tm(d(next.start))}${next.location ? " · " + esc(next.location) : ""}</div>
+          ${next.link && d(next.start) - now < 15 * 60000 ? `<a class="join" href="${esc(next.link)}" target="_blank">Join call</a>` : ""}`;
+    if (state.now_focus) h += `<div class="focus">${esc(state.now_focus)}</div>`;
+  } else {
+    h += `<div class="lbl">Right now</div><div class="what" style="margin-top:6px">${esc(state.now_focus || "Nothing scheduled")}</div>`;
+  }
+  $("now").innerHTML = h;
+}
+
+/* ---------- sleep ---------- */
+function renderSleep(now) {
+  const sl = state.sleep || {}, al = state.alarm || {};
+  const bed = d(sl.bedtime), wake = d(al.time || sl.wake);
+  $("alarmPill").innerHTML = al.time ? `<span class="pill ${al.enabled === false ? "off" : ""}">${al.enabled === false ? "Alarm off" : "⏰ Alarm on"}</span>` : "";
+  if (!bed || !wake) { $("sleepBody").innerHTML = `<div class="empty">Waiting for Claude's sleep plan</div>`; return; }
+  const bp = bjPlan || {};
+  const warm = sl.away || bp.away ? 0 : (bp.pre_minutes ?? 30), cool = sl.away || bp.away ? 0 : (bp.cool_minutes ?? 120);
+  const total = (wake - bed) / 60000 + warm;
+  const pct = m => (100 * m / total) + "%";
+  $("sleep").title = sl.reason || "";
+  $("sleepBody").innerHTML = `
+    <div class="sleepnums">
+      <div><div class="k">🛏️ Bed</div><div class="v num">${tm(bed)}</div></div>
+      <div><div class="k">☀️ Wake</div><div class="v num">${tm(wake)}</div></div>
+      <div class="hrs"><div class="k">😴 Sleep</div><div class="v num">${((wake - bed) / 3600000).toFixed(1)}h</div></div>
+    </div>
+    <div class="sbar">${warm ? `<div class="warm" style="width:${pct(warm)}"></div>` : ""}${cool ? `<div class="cool" style="width:${pct(Math.min(cool, total - warm))}"></div>` : ""}<div class="zz"></div></div>
+    <div class="slegend">${warm ? (bp.steps || []).map(st => `<span>${esc(st.summary)} · ${tmShort(new Date(st.at))}</span>`).join("") + (bp.outside_f != null ? `<span>🌡️ ${bp.outside_f}° out (${esc(bp.profile)})</span>` : "") : `<span>🧳 Away, BedJet off</span>`}
+      <span>${bed > now ? "Bed in " + dur(bed - now) : ""}</span></div>`;
+}
+
+/* ---------- day timeline ---------- */
+function renderDay(now) {
+  const list = (state[dayTab] || []).filter(e => e.start && !e.all_day);
+  const allDay = (state[dayTab] || []).filter(e => e.all_day);
+  const base = new Date(now); if (dayTab === "tomorrow") base.setDate(base.getDate() + 1);
+  $("dayDate").textContent = base.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.d === dayTab));
+
+  const real = list.filter(e => !isHold(e));
+  const busy = real.reduce((a, e) => a + (d(e.end) - d(e.start)), 0);
+  $("dayStats").innerHTML = list.length ? `
+    <div><span class="si">🗓️</span><span class="sv"><b class="num">${real.length}</b><span>events</span></span></div>
+    <div><span class="si">⏳</span><span class="sv"><b class="num">${dur(busy)}</b><span>booked</span></span></div>
+    <div><span class="si">🌄</span><span class="sv"><b class="num">${real.length ? tmShort(d(real[0].start)) : "—"}</b><span>first</span></span></div>
+    <div><span class="si">🏁</span><span class="sv"><b class="num">${real.length ? tmShort(d(real[real.length - 1].end)) : "—"}</b><span>done by</span></span></div>
+    ${real.filter(e => e.link).length ? `<div><span class="si">🎥</span><span class="sv"><b class="num">${real.filter(e => e.link).length}</b><span>video calls</span></span></div>` : ""}
+    ${real.filter(e => e.location && !e.link && !/zoom|phone/i.test(e.location)).length ? `<div><span class="si">📍</span><span class="sv"><b class="num">${real.filter(e => e.location && !e.link && !/zoom|phone/i.test(e.location)).length}</b><span>in person</span></span></div>` : ""}`
+    : `<div class="empty">${allDay.length ? esc(allDay.map(e => e.title).join(" · ")) : "Nothing on the calendar"}</div>`;
+
+  // time range: 8am–8pm, widened to fit events
+  const s0 = new Date(base); s0.setHours(8, 0, 0, 0);
+  const e0 = new Date(base); e0.setHours(20, 0, 0, 0);
+  let start = s0, end = e0;
+  list.forEach(e => { if (d(e.start) < start) start = new Date(d(e.start)); if (d(e.end) > end) end = new Date(d(e.end)); });
+  start.setMinutes(0, 0, 0); if (end.getMinutes()) { end.setHours(end.getHours() + 1, 0, 0, 0); }
+  const span = end - start, x = t => 100 * (t - start) / span;
+
+  // lanes for overlaps
+  const lanes = [];
+  const placed = list.map(e => {
+    const s = d(e.start), en = d(e.end);
+    let li = lanes.findIndex(lEnd => lEnd <= s); if (li < 0) { li = lanes.length; lanes.push(0); }
+    lanes[li] = en; return { e, s, en, li };
+  });
+  const laneH = 30, n = Math.max(1, lanes.length);
+  $("tl").style.height = (list.length ? n * laneH + 8 : 34) + "px";
+  let html = placed.map(({ e, s, en, li }) =>
+    `<div class="ev ${evClass(e)} ${en < now ? "past" : ""}" title="${esc(tm(s) + "–" + tm(en) + "  " + e.title + (e.location ? "\n" + e.location : ""))}"
+      style="left:calc(${x(s)}% + 1px);width:calc(${x(en) - x(s)}% - 2px);top:${4 + li * laneH}px;height:${laneH - 4}px"><span class="ei">${evIcon(e)}</span>${esc(e.title.replace(/^Intro Call(?: \(30m\))? ?/i, "Intro: ").replace(/[()]/g, ""))}</div>`).join("");
+  if (dayTab === "today" && now > start && now < end) html += `<div class="nowline" style="left:${x(now)}%"></div>`;
+  $("tl").innerHTML = html;
+
+  let ticks = "";
+  for (let t = new Date(start); t <= end; t.setHours(t.getHours() + (span > 14 * 3600e3 ? 3 : 2))) ticks += `<span style="left:${x(t)}%">${tmShort(t)}</span>`;
+  $("ticks").innerHTML = ticks;
+
+  const upcoming = real.filter(e => d(e.end) > now).slice(0, 6);
+  $("upnext").innerHTML = upcoming.map(e => `<div class="chip" title="${esc(e.title + (e.location ? " · " + e.location : ""))}">
+      <span class="t num" style="box-shadow:inset 3px 0 0 ${colorOf(e)}">${tmShort(d(e.start))}</span><span class="ei">${evIcon(e)}</span><span class="n">${esc(e.title)}</span></div>`).join("");
+}
+
+/* ---------- other cards ---------- */
+function renderLists(now) {
+  $("prio").innerHTML = (state.priorities || []).map(p => `<li title="${esc(p.why || "")}">${esc(p.text)}</li>`).join("") || `<div class="empty">—</div>`;
+
+  const open = todos.filter(t => !t.done), done = todos.filter(t => t.done && t.done_at && now - d(t.done_at) < 864e5);
+  $("todos").innerHTML = open.concat(done).map(t => `<li data-id="${esc(t.id)}" class="${t.done ? "done" : ""}"><span class="cb">${t.done ? "✓" : ""}</span><span>${esc(t.text)}</span></li>`).join("") || `<div class="empty">🎉 All clear</div>`;
+  $("todoCount").textContent = open.length ? `${open.length} open` : "";
+
+  $("upcoming").innerHTML = (state.upcoming || []).map(u => { const dt = d(u.date);
+    return `<div class="up" title="${esc((dt ? tm(dt) + " · " : "") + (u.note || ""))}">
+      <div class="dbadge"><span>${dt ? dt.toLocaleDateString([], { weekday: "short" }) : ""}</span><b>${dt ? dt.getDate() : ""}</b></div>
+      <span class="ic">${iconOf(u.title)}</span><span class="n">${esc(u.title)}</span></div>`; }).join("") || `<div class="empty">Nothing notable</div>`;
+
+  const mail = state.inbox || [];
+  $("inboxCard").classList.toggle("hidden", !mail.length);
+  $("inbox").innerHTML = mail.map(m => `<a href="${esc(m.link || "#")}" target="_blank" title="${esc(m.why || "")}"><b>${esc(m.from)}</b><span>${esc(m.subject)}</span></a>`).join("");
+}
+
+function render() {
+  const now = new Date();
+  $("clock").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  $("date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  $("headline").textContent = state.headline || "";
+  $("headline").title = state.headline_sub || "";
+  renderNow(now); renderSleep(now); renderDay(now); renderLists(now);
+
+  const gen = d(state.generated_at);
+  $("synced").textContent = gen ? `🔄 Synced ${ago(gen)}` + (now - gen > 3 * 3600e3 ? " · ⚠ stale, is Claude open?" : "") : "Never synced";
+  const w = state.warnings || [];
+  $("warnings").innerHTML = w.length ? `<span class="warnchip" title="${esc(w.join("\n"))}">⚠ ${w.length === 1 ? esc(w[0]) : w.length + " warnings"}</span>` : "";
+
+  const sl = state.sleep || {}, al = state.alarm || {};
+  const bed = d(sl.bedtime), wake = d(al.time || sl.wake);
+  document.body.classList.toggle("night", !!(!forceDay && bed && wake && now >= bed && now < wake));
+  $("nightAlarm").textContent = al.enabled === false ? "off" : tm(wake);
+  const first = (state.tomorrow || []).concat(state.today || []).find(e => !e.all_day && d(e.start) > now && !isHold(e));
+  $("nightFirst").textContent = first ? `${first.title} · ${tm(d(first.start))}` : "";
+  $("ringClock").textContent = $("clock").textContent;
+  $("ringMsg").textContent = al.label || "";
+}
+
+/* ---------- weather ---------- */
+const WXI = { clear: ["☀️", "🌙"], cloudy: ["☁️", "☁️"], fog: ["🌫️", "🌫️"], rain: ["🌧️", "🌧️"], snow: ["🌨️", "🌨️"], storm: ["⛈️", "⛈️"] };
+let wx = null, bjPlan = null;
+function wearIcon(t) { return /coat|gloves/i.test(t) ? "🧥" : /jacket|sweater/i.test(t) ? "🧥" : /layer/i.test(t) ? "👕" : /shorts/i.test(t) ? "🩳" : "👕"; }
+function renderWx() {
+  if (!wx || wx.error) { $("wx").innerHTML = ""; return; }
+  const ico = (WXI[wx.kind] || WXI.cloudy)[wx.is_day ? 0 : 1] === "☁️" && wx.label === "Partly cloudy" ? (wx.is_day ? "⛅" : "☁️") : (WXI[wx.kind] || WXI.cloudy)[wx.is_day ? 0 : 1];
+  document.body.classList.remove("wx-clear", "wx-cloudy", "wx-fog", "wx-rain", "wx-snow", "wx-storm", "wx-day", "wx-night");
+  document.body.classList.add("wx-" + wx.kind, wx.is_day ? "wx-day" : "wx-night");
+  const rainAt = wx.rain_at ? new Date(wx.rain_at) : null;
+  const umbrella = /umbrella/.test(wx.wear) ? " ☂️" : "";
+  const bars = (wx.hours || []).map(h => `<i style="height:${Math.max(2, h.p * .18)}px" title="${new Date(h.t).toLocaleTimeString([], { hour: "numeric" })}: ${h.p}% rain"></i>`).join("");
+  $("wx").title = `${wx.place}: ${wx.label}, feels like ${wx.feels}°. Wind ${wx.wind} mph.\nTomorrow ${wx.tomorrow.hi}°/${wx.tomorrow.lo}°, ${wx.tomorrow.rain_pct}% rain`;
+  $("wx").innerHTML = `<span class="ico">${ico}</span>
+    <div><div class="tmp num">${wx.temp}°</div><div class="sub num">↑${wx.hi}° ↓${wx.lo}°</div></div>
+    <div><div class="sub">${esc(wx.label)} · 💧${wx.rain_pct}%${rainAt ? ` · rain ~${tmShort(rainAt)}` : ""}</div>
+      <div class="wear">${wearIcon(wx.wear)} ${esc(wx.wear.split(" · ")[0])}${umbrella}</div>
+      ${wx.hours && wx.hours.some(h => h.p >= 20) ? `<div class="rainbars">${bars}</div>` : ""}</div>`;
+}
+function renderAlerts() {
+  const now = new Date();
+  const risks = (state.risks || []).map(r => ({ icon: r.icon || "⚠️", title: r.title, sub: r.detail, act: r.action, sev: r.severity || "severe" }));
+  const wxa = ((wx && wx.alerts) || []).filter(a => !a.ends || new Date(a.ends) > now)
+    .filter(a => !risks.some(r => (r.title || "").includes(a.event)))
+    .map(a => ({ icon: /flood/i.test(a.event) ? "🌊" : /surf|wave/i.test(a.event) ? "🌊" : /heat/i.test(a.event) ? "🥵" : /wind/i.test(a.event) ? "💨" : /fire|smoke|air/i.test(a.event) ? "🔥" : /storm|thunder|tornado/i.test(a.event) ? "⛈️" : /winter|snow|ice|freeze/i.test(a.event) ? "🥶" : "⚠️",
+      title: a.event, sub: `${a.onset ? tm(new Date(a.onset)) + " " + new Date(a.onset).toLocaleDateString([], { weekday: "short" }) : ""} → ${a.ends ? new Date(a.ends).toLocaleDateString([], { weekday: "short" }) + " " + tm(new Date(a.ends)) : ""}`,
+      sev: (a.severity || "").toLowerCase(), tip: a.summary }));
+  const all = risks.concat(wxa.filter(a => a.sev === "extreme" || a.sev === "severe"));
+  $("alerts").innerHTML = all.map(a => `<div class="alert ${esc(a.sev)}" title="${esc(a.tip || "")}"><span class="ai">${a.icon}</span>
+    <div><b>${esc(a.title)}</b><div class="as">${esc(a.sub || "")}</div></div>${a.act ? `<span class="act">👉 ${esc(a.act)}</span>` : ""}</div>`).join("");
+}
+async function wxRefresh() { wx = await getJSON("/api/weather", null); bjPlan = await getJSON("/api/bedjet/plan", null); renderWx(); render(); renderAlerts(); }
+
+async function refresh() { state = await getJSON("state.json", state); todos = await getJSON("todos.json", todos); render(); renderAlerts(); }
+async function pollRing() { const rt = await getJSON("/api/runtime", {}); $("ring").classList.toggle("on", !!rt.ringing); }
+
+document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; dayTab = b.dataset.d; render(); });
+$("todos").addEventListener("click", async e => { const li = e.target.closest("li[data-id]"); if (!li) return; await post("/api/todo/toggle", { id: li.dataset.id }); refresh(); });
+$("addTodo").addEventListener("keydown", async e => { if (e.key !== "Enter" || !e.target.value.trim()) return; await post("/api/todo/add", { text: e.target.value }); e.target.value = ""; refresh(); });
+$("snoozeBtn").onclick = async () => { await post("/api/snooze"); pollRing(); };
+$("dismissBtn").onclick = async () => { await post("/api/dismiss"); forceDay = true; pollRing(); render(); };
+$("testBtn").onclick = () => post("/api/test-alarm").then(pollRing);
+$("dayBtn").onclick = () => { forceDay = !forceDay; render(); };
+$("studioBtn").onclick = async () => { const r = await post("/api/studio/sleep-display"); $("studioBtn").textContent = r.ok ? "🖥️ Off ✓" : "🖥️ Unreachable"; setTimeout(() => $("studioBtn").textContent = "🖥️ Studio off", 4000); };
+document.addEventListener("keydown", e => { if ($("ring").classList.contains("on") && e.key === " ") $("snoozeBtn").click(); });
+
+/* ---------- spotify ---------- */
+const ICON = {
+  prev: '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 18V6z"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>' };
+let sp = {}, spOut = {}, spTimer, spBuilt = false;
+async function spCmd(body) {
+  const r = await post("/api/spotify/cmd", body); const j = await r.json().catch(() => ({}));
+  if (j.error && $("spErr")) $("spErr").textContent = /premium/i.test(j.error) ? "Spotify Premium required for playback control" : /NO_ACTIVE_DEVICE|404/.test(j.error) ? "Open Spotify on a device first" : j.error.slice(0, 120);
+  setTimeout(spRefresh, 600);
+}
+function spBuild() {
+  $("spBody").innerHTML = `<div class="np" id="spNp"></div><div class="prog"><i id="spProg"></i></div>
+    <div class="ctl"><button id="spPrev" title="Previous">${ICON.prev}</button><button class="pp" id="spPP"></button><button id="spNext" title="Next">${ICON.next}</button>
+      <input type="range" id="spVol" min="0" max="100" title="Volume"></div>
+    <div class="sel"><select class="field" id="spDev" title="Play on (Spotify device)"></select><select class="field" id="spOut" title="Mac sound output"></select></div>
+    <input type="search" class="field" id="spQ" placeholder="Search songs, artists, playlists">
+    <div id="spResults"></div><div id="spErr" style="color:var(--warn);font-size:11.5px;margin-top:4px"></div>`;
+  $("spPrev").onclick = () => spCmd({ action: "prev" });
+  $("spNext").onclick = () => spCmd({ action: "next" });
+  $("spPP").onclick = () => spCmd({ action: sp.playing ? "pause" : "play" });
+  $("spVol").onchange = e => spCmd({ action: "volume", value: e.target.value });
+  $("spDev").onchange = e => e.target.value && spCmd({ action: "transfer", device_id: e.target.value });
+  $("spOut").onchange = async e => { await post("/api/audio/output", { name: e.target.value }); spRefresh(); };
+  $("spQ").oninput = e => { clearTimeout(spTimer); const q = e.target.value.trim(); if (!q) { $("spResults").innerHTML = ""; return; }
+    spTimer = setTimeout(async () => { const res = await getJSON("/api/spotify/search?q=" + encodeURIComponent(q), []);
+      $("spResults").innerHTML = (Array.isArray(res) ? res : []).map(r => `<div class="r" data-uri="${esc(r.uri)}">${r.art ? `<img src="${esc(r.art)}">` : `<span class="ph"></span>`}
+        <div style="min-width:0"><div class="k">${esc(r.kind)}</div><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)} <span style="color:var(--dim)">${esc(r.sub)}</span></div></div></div>`).join(""); }, 300); };
+  $("spResults").onclick = e => { const r = e.target.closest(".r"); if (!r) return; spCmd({ action: "play_uri", uri: r.dataset.uri, device_id: $("spDev").value || undefined }); $("spQ").value = ""; $("spResults").innerHTML = ""; };
+  spBuilt = true;
+}
+function spRender() {
+  if (!sp.connected) { spBuilt = false; $("spDevName").textContent = "";
+    $("spBody").innerHTML = sp.setup === "missing_client_id" ? `<div class="empty">Ask Claude to finish Spotify setup</div>` : `<a class="btn" href="http://127.0.0.1:8787/spotify/login">Connect Spotify</a>`; return; }
+  if (!spBuilt) spBuild();
+  const it = sp.item;
+  $("spNp").innerHTML = `${it && it.art ? `<img class="art" src="${esc(it.art)}">` : `<span class="art"></span>`}<div class="meta">
+    <div class="tt">${it ? esc(it.name) : '<span style="color:var(--dim)">Nothing playing</span>'}</div><div class="ar">${it ? esc(it.artists) : ""}</div></div>`;
+  $("spProg").style.width = it && it.duration_ms ? (100 * (sp.progress_ms || 0) / it.duration_ms) + "%" : "0";
+  $("spPP").innerHTML = sp.playing ? ICON.pause : ICON.play;
+  if (sp.device && document.activeElement !== $("spVol")) $("spVol").value = sp.device.volume_percent ?? 50;
+  $("spDevName").textContent = sp.device ? "▶ " + sp.device.name : "";
+  const devs = sp.devices || [];
+  if (document.activeElement !== $("spDev"))
+    $("spDev").innerHTML = (devs.some(x => x.active) ? "" : `<option value="">Play on…</option>`) + devs.map(x => `<option value="${esc(x.id)}" ${x.active ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  $("spOut").style.display = spOut.available ? "" : "none";
+  if (spOut.available && document.activeElement !== $("spOut"))
+    $("spOut").innerHTML = spOut.devices.map(n => `<option ${n === spOut.current ? "selected" : ""}>🔈 ${esc(n)}</option>`).join("");
+}
+async function spRefresh() { sp = await getJSON("/api/spotify/state", { connected: false }); spOut = await getJSON("/api/audio/outputs", {}); spRender(); }
+
+refresh(); pollRing(); spRefresh(); wxRefresh(); setInterval(wxRefresh, 10 * 60000);
+setInterval(render, 15000); setInterval(refresh, 30000); setInterval(pollRing, 2000); setInterval(spRefresh, 5000);
+</script>
+</body>
+</html>

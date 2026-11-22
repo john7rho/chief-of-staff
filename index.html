@@ -49,17 +49,17 @@
 
   /* layout grid: tuned for the Claude preview pane, scales up for full screen */
   main { display: grid; gap: var(--gap); align-items: start;
-    grid-template-columns: 1fr; grid-template-areas: "now" "sleep" "day" "prio" "todo" "music" "up" "inbox"; }
+    grid-template-columns: 1fr; grid-template-areas: "now" "sleep" "day" "body" "food" "prio" "todo" "music" "up" "inbox"; }
   @media (min-width: 640px) {
     main { grid-template-columns: 1fr 1fr;
-      grid-template-areas: "now sleep" "day day" "prio todo" "music up" "inbox inbox"; }
+      grid-template-areas: "now sleep" "day day" "body food" "prio todo" "music up" "inbox inbox"; }
   }
   @media (min-width: 1080px) {
     main { grid-template-columns: 1.2fr 1fr 1fr;
-      grid-template-areas: "now sleep sleep" "day day day" "prio todo music" "up up inbox"; }
+      grid-template-areas: "now sleep sleep" "day day day" "body food prio" "todo music up" "inbox inbox inbox"; }
   }
   #now { grid-area: now; } #sleep { grid-area: sleep; } #day { grid-area: day; } #prioCard { grid-area: prio; }
-  #todoCard { grid-area: todo; } #spotify { grid-area: music; } #upCard { grid-area: up; } #inboxCard { grid-area: inbox; }
+  #todoCard { grid-area: todo; } #bodyCard { grid-area: body; } #foodCard { grid-area: food; } #spotify { grid-area: music; } #upCard { grid-area: up; } #inboxCard { grid-area: inbox; }
   .hidden { display: none !important; }
 
   /* now / next */
@@ -110,6 +110,28 @@
   .chip .t { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 8px; background: var(--well); white-space: nowrap; }
   .chip .n { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  /* body + food */
+  .rings { display: flex; gap: 14px; flex-wrap: wrap; }
+  .ring { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 74px; }
+  .ring svg { width: 74px; height: 74px; transform: rotate(-90deg); }
+  .ring .rv { position: relative; margin-top: -54px; height: 50px; font-size: 20px; font-weight: 600; text-align: center; line-height: 1; }
+  .ring .rv small { display: block; font-size: 9.5px; color: var(--dim); font-weight: 500; margin-top: 3px; }
+  .ring .rl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .mini { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .mini div { display: flex; align-items: center; gap: 6px; font-size: 12.5px; } .mini b { font-weight: 600; } .mini span { color: var(--dim); font-size: 11px; }
+  .hbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .hbtns a, .hbtns span { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 99px; text-decoration: none; }
+  .hbtns a { background: var(--accent); color: #07090d; } .hbtns span { background: var(--well); color: var(--dim); }
+  .macro { margin-top: 6px; } .macro .lab { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+  .macro .track { height: 6px; border-radius: 3px; background: var(--well); overflow: hidden; margin-top: 3px; }
+  .macro .track i { display: block; height: 100%; border-radius: 3px; }
+  .foods { list-style: none; display: flex; flex-direction: column; gap: 5px; margin-top: 10px; max-height: 150px; overflow-y: auto; }
+  .foods li { display: flex; gap: 8px; align-items: center; font-size: 12.5px; }
+  .foods li .ft { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foods li .fk { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  .foods li .x { opacity: 0; color: var(--dim); font-size: 11px; } .foods li:hover .x { opacity: 1; }
+  #addFood { margin-top: 10px; }
 
   /* priorities */
   ol.prio { list-style: none; counter-reset: p; display: flex; flex-direction: column; gap: 8px; }
@@ -290,6 +312,9 @@
       <div class="ticks" id="ticks"></div>
       <div class="upnext" id="upnext"></div>
     </section>
+    <section class="card" id="bodyCard"><h2><span><span class="hi">💪</span> Body</span> <small id="bodyDay"></small></h2><div id="bodyBody"></div></section>
+    <section class="card" id="foodCard"><h2><span><span class="hi">🥗</span> Food</span> <small id="foodPending"></small></h2><div id="foodBody"></div>
+      <ul class="foods" id="foods"></ul><input id="addFood" class="field" placeholder="+ Log food, e.g. 'chicken burrito + coke'"></section>
     <section class="card" id="prioCard"><h2><span><span class="hi">🎯</span> Focus</span></h2><ol class="prio" id="prio"></ol></section>
     <section class="card" id="todoCard"><h2><span><span class="hi">✅</span> To-do</span> <small id="todoCount"></small></h2><ul class="todos" id="todos"></ul>
       <input id="addTodo" class="field" placeholder="+ Add a to-do"></section>
@@ -521,6 +546,54 @@ function renderAlerts() {
 }
 async function wxRefresh() { wx = await getJSON("/api/weather", null); bjPlan = await getJSON("/api/bedjet/plan", null); renderWx(); render(); renderAlerts(); }
 
+/* ---------- body (Oura + WHOOP) ---------- */
+let hd = null, nut = null;
+function ring(val, max, color, label, unit) {
+  const r = 31, c = 2 * Math.PI * r, f = val == null ? 0 : Math.max(0, Math.min(1, val / max));
+  return `<div class="ring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+    <circle cx="37" cy="37" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c * f} ${c}"/></svg>
+    <div class="rv num">${val == null ? "—" : val}<small>${unit || ""}</small></div><div class="rl">${label}</div></div>`;
+}
+const scoreColor = v => v == null ? "var(--dim)" : v >= 67 ? "var(--good)" : v >= 34 ? "#ffd166" : "var(--bad)";
+function renderBody() {
+  if (!hd) return;
+  const o = hd.oura || {}, w = hd.whoop || {};
+  let rings = "", mini = "", btns = "";
+  if (w.connected && !w.error) rings += ring(w.recovery, 100, scoreColor(w.recovery), "Recovery", "%") + ring(w.strain, 21, "#5aa8ff", "Strain", "/21");
+  if (o.connected && !o.error) rings += ring(o.readiness, 100, scoreColor(o.readiness), "Readiness") + ring(o.sleep_score, 100, "#9b6dff", "Sleep");
+  const hrv = w.hrv ?? o.hrv, rhr = w.rhr ?? o.rhr, sh = o.sleep_hours ?? w.sleep_hours;
+  if (hrv != null) mini += `<div>💓 <b class="num">${hrv}</b><span>ms HRV</span></div>`;
+  if (rhr != null) mini += `<div>❤️ <b class="num">${rhr}</b><span>bpm resting</span></div>`;
+  if (sh != null) mini += `<div>😴 <b class="num">${sh}h</b><span>slept</span></div>`;
+  if (w.sleep_performance != null) mini += `<div>🛌 <b class="num">${w.sleep_performance}%</b><span>sleep perf.</span></div>`;
+  for (const [p, d, name] of [["oura", o, "Oura"], ["whoop", w, "WHOOP"]]) {
+    if (d.setup === "login") btns += `<a href="http://localhost:8787/${p}/login">Connect ${name}</a>`;
+    else if (d.setup === "missing_app") btns += `<span>${name}: not set up</span>`;
+    else if (d.error) btns += `<span title="${esc(d.error)}">${name}: ⚠ ${esc(d.error)}</span>`;
+  }
+  $("bodyBody").innerHTML = (rings ? `<div class="rings">${rings}</div>` : "") + (mini ? `<div class="mini">${mini}</div>` : "") + (btns ? `<div class="hbtns">${btns}</div>` : "") || `<div class="empty">No data yet</div>`;
+  $("bodyDay").textContent = o.day ? "last night" : "";
+}
+async function healthRefresh() { hd = await getJSON("/api/health", null); renderBody(); }
+
+/* ---------- food ---------- */
+const foodIcon = t => /coffee|latte|espresso/i.test(t) ? "☕" : /salad/i.test(t) ? "🥗" : /burrito|taco/i.test(t) ? "🌯" : /pizza/i.test(t) ? "🍕" : /burger/i.test(t) ? "🍔" : /sushi|poke/i.test(t) ? "🍣" : /egg|breakfast|oat/i.test(t) ? "🍳" : /shake|protein/i.test(t) ? "🥤" : /beer|wine|cocktail/i.test(t) ? "🍷" : /fruit|apple|banana/i.test(t) ? "🍎" : /chicken|steak|meat/i.test(t) ? "🍗" : "🍽️";
+function renderFood() {
+  if (!nut) return;
+  const t = nut.targets || {}, tot = nut.totals || {};
+  const bar = (k, label, color, unit) => t[k] ? `<div class="macro"><div class="lab"><span>${label}</span><span class="num">${tot[k] || 0} / ${t[k]}${unit}</span></div>
+    <div class="track"><i style="width:${Math.min(100, 100 * (tot[k] || 0) / t[k])}%;background:${color}"></i></div></div>` : "";
+  $("foodBody").innerHTML = `<div style="display:flex;gap:16px;align-items:center">${ring(tot.kcal || 0, t.kcal || 2400, "var(--warm)", "kcal", t.kcal ? "of " + t.kcal : "")}
+    <div style="flex:1;min-width:0">${bar("protein_g", "🥩 Protein", "#ff7a90", "g")}${bar("carbs_g", "🍞 Carbs", "#ffd166", "g")}${bar("fat_g", "🥑 Fat", "#6fd39a", "g")}
+    ${!t.protein_g ? `<div class="macro"><div class="lab"><span>🥩 Protein</span><span class="num">${tot.protein_g || 0}g</span></div></div>` : ""}</div></div>`;
+  $("foods").innerHTML = (nut.entries || []).map(e => `<li data-id="${esc(e.id)}"><span>${foodIcon(e.text)}</span><span class="ft" title="${esc(e.text)}">${esc(e.text)}</span>
+    <span class="fk num">${e.kcal == null ? "⏳" : e.kcal + " kcal"}</span><button class="x" title="Remove">✕</button></li>`).join("");
+  $("foodPending").textContent = nut.pending ? `⏳ ${nut.pending} to estimate` : (nut.entries || []).length ? `${nut.entries.length} logged` : "";
+}
+async function foodRefresh() { nut = await getJSON("/api/nutrition", null); renderFood(); }
+$("addFood").addEventListener("keydown", async e => { if (e.key !== "Enter" || !e.target.value.trim()) return; await post("/api/food/add", { text: e.target.value }); e.target.value = ""; foodRefresh(); });
+$("foods").addEventListener("click", async e => { if (!e.target.closest(".x")) return; await post("/api/food/delete", { id: e.target.closest("li").dataset.id }); foodRefresh(); });
+
 async function refresh() { state = await getJSON("state.json", state); todos = await getJSON("todos.json", todos); render(); renderAlerts(); }
 async function pollRing() { const rt = await getJSON("/api/runtime", {}); $("ring").classList.toggle("on", !!rt.ringing); }
 
@@ -586,7 +659,7 @@ function spRender() {
 }
 async function spRefresh() { sp = await getJSON("/api/spotify/state", { connected: false }); spOut = await getJSON("/api/audio/outputs", {}); spRender(); }
 
-refresh(); pollRing(); spRefresh(); wxRefresh(); setInterval(wxRefresh, 10 * 60000);
+refresh(); pollRing(); spRefresh(); wxRefresh(); healthRefresh(); foodRefresh(); setInterval(healthRefresh, 10 * 60000); setInterval(foodRefresh, 30000); setInterval(wxRefresh, 10 * 60000);
 setInterval(render, 15000); setInterval(refresh, 30000); setInterval(pollRing, 2000); setInterval(spRefresh, 5000);
 </script>
 </body>

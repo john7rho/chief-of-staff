@@ -17,3 +17,6 @@ bin/*.app/
 # ---- misc ----
 .DS_Store
 __pycache__/
+.health_tokens.json
+.health_secrets.json
+nutrition.json

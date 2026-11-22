@@ -543,6 +543,141 @@ def weather():
     return data
 
 
+# ---------- health: Oura + WHOOP (direct OAuth; tokens stay in .health_tokens.json) ----------
+HEALTH_TOKENS = ROOT / ".health_tokens.json"
+HEALTH_SECRETS = ROOT / ".health_secrets.json"   # {"oura": {"client_id","client_secret"}, "whoop": {...}}
+PROVIDERS = {
+    "oura": {"auth": "https://cloud.ouraring.com/oauth/authorize", "token": "https://api.ouraring.com/oauth/token",
+             "scope": "personal daily heartrate", "api": "https://api.ouraring.com"},
+    "whoop": {"auth": "https://api.prod.whoop.com/oauth/oauth2/auth", "token": "https://api.prod.whoop.com/oauth/oauth2/token",
+              "scope": "read:recovery read:cycles read:sleep read:profile offline", "api": "https://api.prod.whoop.com/developer"},
+}
+_hstate, _hlock, _hcache = {}, threading.Lock(), {"at": 0, "data": None}
+UA = {"User-Agent": "ChiefOfStaff-dashboard (local)"}
+
+
+def h_creds(p):
+    return (load(HEALTH_SECRETS, {}) or {}).get(p) or {}
+
+
+def h_redirect(p):
+    # Oura only allows http redirects to "localhost" (not 127.0.0.1)
+    return f"http://localhost:{PORT}/{p}/callback"
+
+
+def h_login_url(p):
+    st = secrets.token_hex(4)  # WHOOP requires exactly 8 chars
+    _hstate[st] = p
+    return PROVIDERS[p]["auth"] + "?" + urllib.parse.urlencode({
+        "response_type": "code", "client_id": h_creds(p).get("client_id", ""), "redirect_uri": h_redirect(p),
+        "scope": PROVIDERS[p]["scope"], "state": st})
+
+
+def _h_token(p, data):
+    c = h_creds(p)
+    data = {**data, "client_id": c.get("client_id", ""), "client_secret": c.get("client_secret", "")}
+    req = urllib.request.Request(PROVIDERS[p]["token"], data=urllib.parse.urlencode(data).encode(),
+                                 headers={"Content-Type": "application/x-www-form-urlencoded", **UA})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        tok = json.loads(r.read())
+    tok["expires_at"] = time.time() + int(tok.get("expires_in", 3600)) - 120
+    allt = load(HEALTH_TOKENS, {})
+    allt[p] = {**allt.get(p, {}), **tok}
+    save(HEALTH_TOKENS, allt)          # atomic write; refresh tokens are single-use
+    os.chmod(HEALTH_TOKENS, 0o600)
+    return allt[p]
+
+
+def h_callback(p, code, st):
+    if _hstate.pop(st, None) != p:
+        raise ValueError("bad state")
+    _h_token(p, {"grant_type": "authorization_code", "code": code, "redirect_uri": h_redirect(p)})
+    _hcache["at"] = 0
+
+
+def h_access(p):
+    with _hlock:  # serialize refreshes: both providers invalidate old tokens on refresh
+        t = load(HEALTH_TOKENS, {}).get(p) or {}
+        if not t.get("access_token"):
+            return None
+        if time.time() > t.get("expires_at", 0) and t.get("refresh_token"):
+            extra = {"scope": "offline"} if p == "whoop" else {}
+            t = _h_token(p, {"grant_type": "refresh_token", "refresh_token": t["refresh_token"], **extra})
+        return t["access_token"]
+
+
+def h_get(p, path, params=None):
+    tok = h_access(p)
+    if not tok:
+        return None
+    url = PROVIDERS[p]["api"] + path + ("?" + urllib.parse.urlencode(params) if params else "")
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}", **UA})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def oura_summary():
+    today = datetime.now().date()
+    rng = {"start_date": str(today - timedelta(days=3)), "end_date": str(today + timedelta(days=1))}
+    ds = (h_get("oura", "/v2/usercollection/daily_sleep", rng) or {}).get("data", [])
+    rd = (h_get("oura", "/v2/usercollection/daily_readiness", rng) or {}).get("data", [])
+    sl = [x for x in (h_get("oura", "/v2/usercollection/sleep", rng) or {}).get("data", []) if x.get("type") == "long_sleep"]
+    last = sl[-1] if sl else {}
+    return {"sleep_score": ds[-1]["score"] if ds else None, "readiness": rd[-1]["score"] if rd else None,
+            "day": (ds[-1]["day"] if ds else None), "hrv": last.get("average_hrv"), "rhr": last.get("lowest_heart_rate"),
+            "sleep_hours": round(last["total_sleep_duration"] / 3600, 1) if last.get("total_sleep_duration") else None,
+            "efficiency": last.get("efficiency"), "bed": last.get("bedtime_start"), "wake": last.get("bedtime_end")}
+
+
+def whoop_summary():
+    rec = ((h_get("whoop", "/v2/recovery", {"limit": 1}) or {}).get("records") or [{}])[0]
+    slp = ((h_get("whoop", "/v2/activity/sleep", {"limit": 1}) or {}).get("records") or [{}])[0]
+    cyc = ((h_get("whoop", "/v2/cycle", {"limit": 1}) or {}).get("records") or [{}])[0]
+    rs, ss, cs = rec.get("score") or {}, slp.get("score") or {}, cyc.get("score") or {}
+    stg = ss.get("stage_summary") or {}
+    asleep = sum(stg.get(k, 0) for k in ("total_light_sleep_time_milli", "total_slow_wave_sleep_time_milli", "total_rem_sleep_time_milli"))
+    return {"recovery": rs.get("recovery_score"), "hrv": round(rs["hrv_rmssd_milli"]) if rs.get("hrv_rmssd_milli") else None,
+            "rhr": rs.get("resting_heart_rate"), "sleep_performance": ss.get("sleep_performance_percentage"),
+            "sleep_hours": round(asleep / 3600000, 1) if asleep else None, "strain": round(cs["strain"], 1) if cs.get("strain") else None,
+            "state": rec.get("score_state")}
+
+
+def health():
+    if _hcache["data"] and time.time() - _hcache["at"] < 900:
+        return _hcache["data"]
+    out = {}
+    enabled = load(CONFIG, {}).get("health_providers", ["whoop"])
+    for p, fn in (("oura", oura_summary), ("whoop", whoop_summary)):
+        if p not in enabled:
+            continue
+        if not h_creds(p).get("client_id"):
+            out[p] = {"connected": False, "setup": "missing_app"}
+        elif not (load(HEALTH_TOKENS, {}).get(p) or {}).get("access_token"):
+            out[p] = {"connected": False, "setup": "login"}
+        else:
+            try:
+                out[p] = {"connected": True, **fn()}
+            except urllib.error.HTTPError as e:
+                out[p] = {"connected": True, "error": f"{e.code}" + (" (membership?)" if p == "oura" and e.code == 403 else "")}
+            except Exception as e:
+                out[p] = {"connected": True, "error": str(e)[:120]}
+    _hcache.update(at=time.time(), data=out)
+    return out
+
+
+# ---------- nutrition (logged by Claude or the dashboard; Claude fills in estimates) ----------
+NUTRITION = ROOT / "nutrition.json"   # {"targets": {...}, "entries": [{id, at, text, kcal, protein_g, carbs_g, fat_g, source}]}
+
+
+def nutrition_today():
+    n = load(NUTRITION, {"targets": {}, "entries": []})
+    today = datetime.now().date().isoformat()
+    ents = [e for e in n.get("entries", []) if (e.get("at") or "")[:10] == today]
+    tot = {k: round(sum((e.get(k) or 0) for e in ents)) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
+    return {"targets": n.get("targets", {}), "entries": ents, "totals": tot,
+            "pending": sum(1 for e in ents if e.get("kcal") is None)}
+
+
 # ---------- mac audio output ----------
 SAS = shutil.which("SwitchAudioSource") or "/usr/local/bin/SwitchAudioSource"
 
@@ -637,6 +772,19 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.json(weather())
             if u.path == "/api/bedjet/plan":
                 return self.json(bedjet_summary())
+            if u.path in ("/oura/login", "/whoop/login"):
+                self.send_response(302)
+                self.send_header("Location", h_login_url(u.path.split("/")[1]))
+                return self.end_headers()
+            if u.path in ("/oura/callback", "/whoop/callback"):
+                h_callback(u.path.split("/")[1], qs.get("code", [""])[0], qs.get("state", [""])[0])
+                self.send_response(302)
+                self.send_header("Location", f"http://localhost:{PORT}/")
+                return self.end_headers()
+            if u.path == "/api/health":
+                return self.json(health())
+            if u.path == "/api/nutrition":
+                return self.json(nutrition_today())
         except Exception as e:
             return self.json({"error": str(e)}, 500)
         # only serve dashboard assets, never arbitrary files
@@ -694,6 +842,19 @@ class Handler(SimpleHTTPRequestHandler):
                         t["done"] = not t.get("done")
                         t["done_at"] = now().isoformat() if t["done"] else None
                 save(TODOS, todos)
+            elif p == "/api/food/add":
+                text = (body.get("text") or "").strip()[:300]
+                if text:
+                    n = load(NUTRITION, {"targets": {}, "entries": []})
+                    n.setdefault("entries", []).append({"id": uuid.uuid4().hex[:8], "at": now().isoformat(), "text": text,
+                                                        "kcal": None, "protein_g": None, "carbs_g": None, "fat_g": None,
+                                                        "source": "dashboard"})
+                    n["entries"] = n["entries"][-500:]
+                    save(NUTRITION, n)
+            elif p == "/api/food/delete":
+                n = load(NUTRITION, {"targets": {}, "entries": []})
+                n["entries"] = [e for e in n.get("entries", []) if e.get("id") != body.get("id")]
+                save(NUTRITION, n)
             elif p == "/api/todo/add":
                 text = (body.get("text") or "").strip()
                 if text:

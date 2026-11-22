@@ -52,5 +52,8 @@
     "warm_before_wake": false,
     "warm_minutes": 10,
     "adapt_to_weather": true
-  }
+  },
+  "health_providers": [
+    "whoop"
+  ]
 }

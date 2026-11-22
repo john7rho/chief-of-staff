@@ -108,6 +108,27 @@ Look ~36h ahead for anything that should change the owner's plans, and say so be
 - Facts to remember → append to `profile.md`.
 After any change, the dashboard picks it up within 30 seconds — no restart needed.
 
+## Body (WHOOP) — direct, private
+- Enabled providers: `config.json` → `health_providers` (default `["whoop"]`). **Oura is intentionally off:** the Oura
+  API Agreement (June 2026, §4(d)) bans feeding Oura API data to AI models. Do not enable it or read Oura data.
+- `curl -s 127.0.0.1:8787/api/health` → `whoop`
+  {recovery, strain, hrv, rhr, sleep_performance, sleep_hours}. Tokens live in gitignored `.health_tokens.json`;
+  app credentials in `.health_secrets.json` (never print either).
+- Use it in every sync, quietly and concretely:
+  - Recovery < 34% → bedtime 30–45 min earlier tonight (if the morning allows), flag it in
+    `headline_sub`, suggest moving optional/heavy items, and skip suggesting late plans.
+  - Short sleep last night (< 6h) → note it and protect tonight's bedtime.
+  - Green recovery (≥ 67%) → fine to suggest the hard workout / deep work block.
+- Health data is private: never send it anywhere, never put it in tracked files, texts, or emails.
+
+## Food / nutrition
+- `nutrition.json` (gitignored): `{"targets": {"kcal", "protein_g", ...}, "entries": [{id, at, text, kcal, protein_g,
+  carbs_g, fat_g, source}]}`. The dashboard shows today's totals vs targets.
+- When the owner tells you what they ate (text or a photo), append an entry with your best estimates (source: "claude").
+  Ask only if the portion is truly ambiguous; otherwise estimate typical portions.
+- Entries logged from the dashboard arrive with `kcal: null`. **Every sync: fill in estimates for any null entries.**
+- Mention protein/calorie gaps late in the day in `priorities` only if notably off target. No moralizing.
+
 ## Music (Spotify) and sound output
 The local server proxies Spotify. When the owner asks to play something, use curl (POSTs need header `X-CoS: 1`):
 - Search: `curl -s "127.0.0.1:8787/api/spotify/search?q=<urlencoded>"` → list of `{kind,name,sub,uri}`

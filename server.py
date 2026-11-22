@@ -818,6 +818,15 @@ class Handler(SimpleHTTPRequestHandler):
         if p in ("/api/studio/sleep-display", "/api/studio/wake-display"):
             ok, msg = studio(p.rsplit("/", 1)[1])
             return self.json({"ok": ok, "msg": msg}, 200 if ok else 500)
+        if p == "/api/bedjet":
+            presets = {"warm": [["heat"], ["temp", "90"], ["fan", "45"], ["runtime", "0:30"]],
+                       "cool": [["cool"], ["fan", "30"], ["runtime", "1:00"]],
+                       "off": [["off"]]}
+            cmds = presets.get(body.get("action"))
+            if not cmds:
+                return self.send_error(400)
+            threading.Thread(target=bedjet_run, args=(f"manual-{body['action']}", cmds), daemon=True).start()
+            return self.json({"ok": True})
         if p == "/api/audio/output":
             set_output(body.get("name", ""))
             return self.json({"ok": True})

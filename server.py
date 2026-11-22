@@ -163,6 +163,12 @@ def tick():
 
         # --- BedJet schedule (follows Claude's sleep plan + home bedtime temperature) ---
         wake = parse(sleep.get("wake")) or at
+        if bed and not sleep.get("away") and (cfg.get("bedjet_schedule") or {}).get("enabled"):
+            chk = bed - timedelta(minutes=int((cfg.get("bedjet_schedule") or {}).get("pre_bed_minutes", 30)) + 30)
+            k = f"bj-check:{chk.isoformat()}"
+            if chk <= n <= chk + timedelta(minutes=15) and k not in rt.get("nudged", []):
+                rt.setdefault("nudged", []).append(k)
+                threading.Thread(target=bedjet_preflight, daemon=True).start()
         if bed and not sleep.get("away"):
             for tag, when, cmds, _ in bedjet_plan(bed, wake, alarm, cfg):
                 k = f"{tag}:{when.isoformat()}"
@@ -260,6 +266,18 @@ def bedjet_summary():
             "steps": [{"tag": t, "at": w.isoformat(), "summary": sm} for t, w, _, sm in steps],
             "pre_minutes": int(bj.get("pre_bed_minutes", 30)),
             "cool_minutes": prof["cool_minutes"] if prof else int(bj.get("overnight_minutes", 0))}
+
+
+def bedjet_preflight():
+    """30 min before the warm-up: make sure the BedJet is reachable so tonight's schedule won't silently fail."""
+    for attempt in (1, 2):
+        r = subprocess.run([str(ROOT / "bin" / "bedjet"), "status"], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            log("bedjet preflight ok")
+            return
+        time.sleep(20)
+    log(f"bedjet preflight failed: {r.stdout.strip()}")
+    notify("BedJet unreachable", "Warm-up starts in 30 min. Check it's plugged in and the BedJet phone app is closed.", "Basso")
 
 
 def bedjet_run(tag, cmds):

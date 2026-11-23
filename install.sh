@@ -29,7 +29,7 @@ PL
 echo "→ building helper apps (camera + Bluetooth get their own macOS permission prompts)"
 build_app RoomCam snap.swift local.chiefofstaff.roomcam NSCameraUsageDescription "Room-check photos you ask for."
 build_app BedJetCtl bedjet.swift local.chiefofstaff.bedjet NSBluetoothAlwaysUsageDescription "Controls your BedJet over Bluetooth."
-chmod +x bin/bedjet bin/roomcheck bin/text bin/contact bin/studio
+chmod +x bin/bedjet bin/roomcheck bin/text bin/contact bin/studio bin/backup bin/restore
 
 LA="$HOME/Library/LaunchAgents"; mkdir -p "$LA"
 cat > "$LA/com.chiefofstaff.server.plist" <<PL
@@ -52,7 +52,18 @@ cat > "$LA/com.chiefofstaff.open.plist" <<PL
   <key>RunAtLoad</key><true/>
 </dict></plist>
 PL
-for a in server open; do
+sqlite3 data/cos.db < data/schema.sql && chmod 600 data/cos.db
+cat > "$LA/com.chiefofstaff.backup.plist" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.chiefofstaff.backup</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$DIR/bin/backup</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>$DIR/logs/backup.log</string><key>StandardErrorPath</key><string>$DIR/logs/backup.log</string>
+</dict></plist>
+PL
+for a in server open backup; do
   launchctl bootout "gui/$(id -u)/com.chiefofstaff.$a" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$LA/com.chiefofstaff.$a.plist"
 done

@@ -142,6 +142,7 @@ def tick():
             rt["ringing"] = True
             log(f"alarm firing for {key}")
             start_ring(alarm.get("label", "Wake up"))
+            alarm_event("fired")
 
         # --- bedtime nudges ---
         sleep = state.get("sleep") or {}
@@ -176,6 +177,10 @@ def tick():
                     rt.setdefault("nudged", []).append(k)
                     rt["nudged"] = rt["nudged"][-40:]
                     threading.Thread(target=bedjet_run, args=(tag, cmds), daemon=True).start()
+
+        if time.time() - rt.get("history_at", 0) > 600:
+            rt["history_at"] = time.time()
+            threading.Thread(target=record_history, args=(state,), daemon=True).start()
 
         # --- upcoming event heads-up ---
         lead = cfg.get("event_heads_up_minutes", 10)
@@ -286,6 +291,11 @@ def bedjet_run(tag, cmds):
         for attempt in (1, 2):
             r = subprocess.run([str(ROOT / "bin" / "bedjet"), *c], capture_output=True, text=True, timeout=60)
             log(f"bedjet {tag} {' '.join(c)}: {r.stdout.strip()}")
+            try:
+                db_exec("INSERT INTO bedjet_runs (at, tag, command, ok, result) VALUES (?,?,?,?,?)",
+                        (now().isoformat(), tag, " ".join(c), int(r.returncode == 0), r.stdout.strip()[:200]))
+            except Exception as e:
+                log(f"bedjet log error: {e}")
             if r.returncode == 0:
                 break
             time.sleep(5)
@@ -516,6 +526,23 @@ def weather():
     key = (round(float(loc["lat"]), 2), round(float(loc["lon"]), 2))
     if _wx["data"] and _wx["loc"] == key and time.time() - _wx["at"] < 900:
         return _wx["data"]
+    if time.time() - _wx.get("fail_at", 0) < 300:  # back off 5 min after a failure; serve last good data
+        if _wx["data"]:
+            return {**_wx["data"], "stale": True}
+        raise RuntimeError("weather temporarily unavailable")
+    try:
+        return _weather_fetch(loc, key)
+    except Exception:
+        _wx["fail_at"] = time.time()
+        cache = load(ROOT / ".weather_cache.json", None)
+        if cache and not _wx["data"]:
+            _wx.update(data=cache.get("data"), htimes=cache.get("htimes", []), htemps=cache.get("htemps", []), loc=key)
+        if _wx["data"]:
+            return {**_wx["data"], "stale": True}
+        raise
+
+
+def _weather_fetch(loc, key):
     q = urllib.parse.urlencode({
         "latitude": key[0], "longitude": key[1], "timezone": "auto", "forecast_days": 2,
         "temperature_unit": "fahrenheit", "wind_speed_unit": "mph",
@@ -540,6 +567,7 @@ def weather():
                          "rain_pct": dly["precipitation_probability_max"][1] or 0}}
     data["alerts"] = nws_alerts(*key)
     _wx.update(at=time.time(), data=data, loc=key, htimes=hr["time"], htemps=hr["temperature_2m"])
+    save(ROOT / ".weather_cache.json", {"data": data, "htimes": hr["time"], "htemps": hr["temperature_2m"]})
     return data
 
 
@@ -665,17 +693,92 @@ def health():
     return out
 
 
-# ---------- nutrition (logged by Claude or the dashboard; Claude fills in estimates) ----------
-NUTRITION = ROOT / "nutrition.json"   # {"targets": {...}, "entries": [{id, at, text, kcal, protein_g, carbs_g, fat_g, source}]}
+# ---------- database (SQLite, data/cos.db; schema in data/schema.sql) ----------
+import sqlite3
+DB_PATH = ROOT / "data" / "cos.db"
+_dblock = threading.Lock()
+
+
+def db():
+    """Short-lived connection; schema is applied idempotently on first use."""
+    first = not DB_PATH.exists()
+    DB_PATH.parent.mkdir(mode=0o700, exist_ok=True)
+    c = sqlite3.connect(DB_PATH, timeout=10)
+    c.row_factory = sqlite3.Row
+    if first or not getattr(db, "_ready", False):
+        c.executescript((ROOT / "data" / "schema.sql").read_text())
+        os.chmod(DB_PATH, 0o600)
+        db._ready = True
+    return c
+
+
+def db_exec(sql, args=()):
+    with _dblock:
+        c = db()
+        try:
+            c.execute(sql, args)
+            c.commit()
+        finally:
+            c.close()
+
+
+def db_rows(sql, args=()):
+    c = db()
+    try:
+        return [dict(r) for r in c.execute(sql, args).fetchall()]
+    finally:
+        c.close()
 
 
 def nutrition_today():
-    n = load(NUTRITION, {"targets": {}, "entries": []})
     today = datetime.now().date().isoformat()
-    ents = [e for e in n.get("entries", []) if (e.get("at") or "")[:10] == today]
+    ents = db_rows("SELECT * FROM food_entries WHERE day = ? ORDER BY at", (today,))
+    t = (db_rows("SELECT kcal, protein_g, carbs_g, fat_g FROM nutrition_targets ORDER BY set_at DESC LIMIT 1") or [{}])[0]
+    targets = {k: v for k, v in t.items() if v}
     tot = {k: round(sum((e.get(k) or 0) for e in ents)) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
-    return {"targets": n.get("targets", {}), "entries": ents, "totals": tot,
-            "pending": sum(1 for e in ents if e.get("kcal") is None)}
+    return {"targets": targets, "entries": ents, "totals": tot, "pending": sum(1 for e in ents if e.get("kcal") is None)}
+
+
+def record_history(state):
+    """Called from tick (~every 15 s, but writes are cheap upserts): sleep plan, daily brief, weather."""
+    try:
+        sl = state.get("sleep") or {}
+        bed = parse(sl.get("bedtime"))
+        if bed:
+            night = (bed - timedelta(hours=12)).date().isoformat()
+            db_exec("""INSERT INTO sleep_plans (night, bedtime, wake, reason, away) VALUES (?,?,?,?,?)
+                       ON CONFLICT(night) DO UPDATE SET bedtime=excluded.bedtime, wake=excluded.wake,
+                       reason=excluded.reason, away=excluded.away""",
+                    (night, sl.get("bedtime"), sl.get("wake") or (state.get("alarm") or {}).get("time"),
+                     sl.get("reason"), int(bool(sl.get("away")))))
+        today = datetime.now().date().isoformat()
+        evs = [e for e in state.get("today", []) if not e.get("all_day")]
+        db_exec("""INSERT INTO daily_briefs (day, headline, priorities, risks, events, first_event) VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(day) DO UPDATE SET headline=excluded.headline, priorities=excluded.priorities,
+                   risks=excluded.risks, events=excluded.events, first_event=excluded.first_event""",
+                (today, state.get("headline"), json.dumps([p.get("text") for p in state.get("priorities", [])]),
+                 json.dumps([r.get("title") for r in state.get("risks", [])]), len(evs), evs[0]["start"] if evs else None))
+        w = _wx.get("data")
+        if w and not w.get("error"):
+            db_exec("""INSERT INTO weather_daily (day, place, hi, lo, kind, rain_pct, alerts) VALUES (?,?,?,?,?,?,?)
+                       ON CONFLICT(day) DO UPDATE SET hi=excluded.hi, lo=excluded.lo, kind=excluded.kind,
+                       rain_pct=excluded.rain_pct, alerts=excluded.alerts""",
+                    (today, w.get("place"), w.get("hi"), w.get("lo"), w.get("kind"), w.get("rain_pct"),
+                     json.dumps([a.get("event") for a in w.get("alerts", [])])))
+    except Exception as e:
+        log(f"history error: {e}")
+
+
+def alarm_event(kind):
+    """kind: fired | dismissed | snoozed — attached to the night the alarm belongs to."""
+    try:
+        night = (now() - timedelta(hours=12)).date().isoformat()
+        sql = {"fired": "UPDATE sleep_plans SET alarm_fired_at = COALESCE(alarm_fired_at, ?) WHERE night = ?",
+               "dismissed": "UPDATE sleep_plans SET alarm_dismissed_at = ? WHERE night = ?",
+               "snoozed": "UPDATE sleep_plans SET snoozes = snoozes + 1 WHERE ? IS NOT NULL AND night = ?"}[kind]
+        db_exec(sql, (now().isoformat(), night))
+    except Exception as e:
+        log(f"alarm_event error: {e}")
 
 
 # ---------- mac audio output ----------
@@ -833,11 +936,13 @@ class Handler(SimpleHTTPRequestHandler):
         with lock:
             if p == "/api/dismiss":
                 stop_ring()
+                alarm_event("dismissed")
                 rt = load(RUNTIME, {})
                 rt.update(ringing=False, snooze_until=None)
                 save(RUNTIME, rt)
             elif p == "/api/snooze":
                 stop_ring()
+                alarm_event("snoozed")
                 mins = load(CONFIG, {}).get("snooze_minutes", 9)
                 rt = load(RUNTIME, {})
                 rt.update(ringing=False, snooze_until=(now() + timedelta(minutes=mins)).isoformat())
@@ -854,16 +959,11 @@ class Handler(SimpleHTTPRequestHandler):
             elif p == "/api/food/add":
                 text = (body.get("text") or "").strip()[:300]
                 if text:
-                    n = load(NUTRITION, {"targets": {}, "entries": []})
-                    n.setdefault("entries", []).append({"id": uuid.uuid4().hex[:8], "at": now().isoformat(), "text": text,
-                                                        "kcal": None, "protein_g": None, "carbs_g": None, "fat_g": None,
-                                                        "source": "dashboard"})
-                    n["entries"] = n["entries"][-500:]
-                    save(NUTRITION, n)
+                    t = now()
+                    db_exec("INSERT INTO food_entries (id, at, day, text, source) VALUES (?,?,?,?, 'dashboard')",
+                            (uuid.uuid4().hex[:8], t.isoformat(), t.date().isoformat(), text))
             elif p == "/api/food/delete":
-                n = load(NUTRITION, {"targets": {}, "entries": []})
-                n["entries"] = [e for e in n.get("entries", []) if e.get("id") != body.get("id")]
-                save(NUTRITION, n)
+                db_exec("DELETE FROM food_entries WHERE id = ?", (str(body.get("id", "")),))
             elif p == "/api/todo/add":
                 text = (body.get("text") or "").strip()
                 if text:

@@ -20,6 +20,9 @@ sends nudges, and talks to your gadgets.
 | 📷 **Room check** | Webcam snapshot compared with a baseline photo, on request |
 | 💬 **Texts** | iMessage/SMS from the Mac, **only after you approve each message** |
 | 🖥️ **Second Mac** | Sleeps another Mac's display at bedtime over SSH |
+| 💪 **WHOOP** | Recovery, strain, HRV, sleep (direct OAuth) feed bedtime suggestions |
+| 🥗 **Food** | Log meals by chat, photo, or dashboard; Claude estimates macros |
+| 🗄️ **History** | Local SQLite DB with optional encrypted, private GitHub backups |
 
 ## Requirements
 - macOS 14+ (tested on macOS 26), Python 3.10+, Xcode command-line tools (`swiftc`), Google Chrome
@@ -46,6 +49,18 @@ cd ~/ChiefOfStaff && ./install.sh
 In any Claude session in this folder: *"set my alarm for 6:30"*, *"add 'call the dentist' to my list"*,
 *"play some jazz on the kitchen speaker"*, *"warm the bed to 90°"*, *"check my room"*, *"text Sam I'm running late"*.
 `CLAUDE.md` is the operating manual Claude follows; edit it to change the rules.
+
+## Database & encrypted backups
+- History lives in a local SQLite DB (`data/cos.db`, schema in `data/schema.sql`): food log, sleep plans + alarm
+  outcomes, daily briefs, weather, BedJet runs. No ORM or server needed; Claude queries it with `sqlite3`.
+- Optional nightly encrypted backup to a **private** GitHub repo:
+  ```bash
+  security add-generic-password -a "$USER" -s chief-of-staff-backup -w "$(openssl rand -base64 32)"   # save this key in your password manager too
+  gh repo create <you>/chief-of-staff-backup --private && git clone https://github.com/<you>/chief-of-staff-backup .backup-repo
+  bin/backup     # install.sh schedules it nightly at 3:30 AM
+  bin/restore    # decrypts to a staging folder; --apply to restore
+  ```
+  Backups are AES-256 encrypted before they leave the Mac; OAuth tokens and app secrets are never included.
 
 ## Privacy & security
 - The server binds to `127.0.0.1` only, rejects other `Host`/`Origin` headers (DNS-rebinding and cross-site protection),

@@ -121,13 +121,24 @@ After any change, the dashboard picks it up within 30 seconds — no restart nee
   - Green recovery (≥ 67%) → fine to suggest the hard workout / deep work block.
 - Health data is private: never send it anywhere, never put it in tracked files, texts, or emails.
 
-## Food / nutrition
-- `nutrition.json` (gitignored): `{"targets": {"kcal", "protein_g", ...}, "entries": [{id, at, text, kcal, protein_g,
-  carbs_g, fat_g, source}]}`. The dashboard shows today's totals vs targets.
-- When the owner tells you what they ate (text or a photo), append an entry with your best estimates (source: "claude").
-  Ask only if the portion is truly ambiguous; otherwise estimate typical portions.
-- Entries logged from the dashboard arrive with `kcal: null`. **Every sync: fill in estimates for any null entries.**
+## Food / nutrition (SQLite)
+- Stored in `data/cos.db` → table `food_entries(id, at, day, text, kcal, protein_g, carbs_g, fat_g, supplement, source)`;
+  targets in `nutrition_targets` (latest row wins). The dashboard reads `/api/nutrition`.
+- When the owner tells you what they ate (text or a photo), insert rows with your best estimates, e.g.
+  `sqlite3 ~/ChiefOfStaff/data/cos.db "INSERT INTO food_entries (id,at,day,text,kcal,protein_g,carbs_g,fat_g,supplement,source)
+  VALUES (lower(hex(randomblob(4))), '<ISO now>', '<YYYY-MM-DD>', 'Avocado toast', 300, 8, 30, 18, 0, 'claude')"`.
+  Ask only if the portion is truly ambiguous; otherwise estimate typical portions. Supplements: kcal 0, supplement 1.
+- Dashboard entries arrive with `kcal` NULL. **Every sync: fill estimates** (`UPDATE food_entries SET ... WHERE kcal IS NULL`).
+- Change targets with `INSERT INTO nutrition_targets VALUES (datetime('now'), 2400, 150, NULL, NULL)`.
 - Mention protein/calorie gaps late in the day in `priorities` only if notably off target. No moralizing.
+
+## Database & backups
+- `data/cos.db` (SQLite, schema in `data/schema.sql`) also logs history automatically: `sleep_plans` (plan + alarm
+  fired/dismissed/snoozes), `daily_briefs`, `weather_daily`, `bedjet_runs`. Use it to spot patterns when asked
+  ("how have I been sleeping?", "average protein this week"). **Never store WHOOP data in it** (WHOOP terms §4.2.2).
+- Backups: `bin/backup` (nightly 3:30 AM via launchd) encrypts the DB + profile/config/state/todos with AES-256 using the
+  Keychain key `chief-of-staff-backup` and pushes to the owner's **private** backup repo (`.backup-repo/`).
+  `bin/restore` decrypts into a staging folder; `--apply` restores. Never print the key; never push backups to the public repo.
 
 ## Music (Spotify) and sound output
 The local server proxies Spotify. When the owner asks to play something, use curl (POSTs need header `X-CoS: 1`):

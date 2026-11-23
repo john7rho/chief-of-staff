@@ -559,7 +559,7 @@ function renderBody() {
 async function healthRefresh() { hd = await getJSON("/api/health", null); renderBody(); }
 
 /* ---------- food ---------- */
-const foodIcon = t => /coffee|latte|espresso/i.test(t) ? "☕" : /salad/i.test(t) ? "🥗" : /burrito|taco/i.test(t) ? "🌯" : /pizza/i.test(t) ? "🍕" : /burger/i.test(t) ? "🍔" : /sushi|poke/i.test(t) ? "🍣" : /egg|breakfast|oat/i.test(t) ? "🍳" : /shake|protein/i.test(t) ? "🥤" : /beer|wine|cocktail/i.test(t) ? "🍷" : /fruit|apple|banana/i.test(t) ? "🍎" : /chicken|steak|meat/i.test(t) ? "🍗" : "🍽️";
+const foodIcon = t => /vitamin|supplement|capsule|omega|creatine/i.test(t) ? "💊" : /coffee|latte|espresso/i.test(t) ? "☕" : /salad/i.test(t) ? "🥗" : /burrito|taco/i.test(t) ? "🌯" : /pizza/i.test(t) ? "🍕" : /burger/i.test(t) ? "🍔" : /sushi|poke/i.test(t) ? "🍣" : /egg|breakfast|oat/i.test(t) ? "🍳" : /shake|protein/i.test(t) ? "🥤" : /beer|wine|cocktail/i.test(t) ? "🍷" : /fruit|apple|banana/i.test(t) ? "🍎" : /chicken|steak|meat/i.test(t) ? "🍗" : "🍽️";
 function renderFood() {
   if (!nut) return;
   const t = nut.targets || {}, tot = nut.totals || {};

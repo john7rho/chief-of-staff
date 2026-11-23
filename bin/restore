@@ -1,0 +1,17 @@
+#!/bin/bash
+# Decrypt the latest (or a given commit's) backup into a staging folder. Nothing is overwritten unless --apply.
+# usage: restore [--commit <sha>] [--apply]
+set -euo pipefail
+ROOT="$HOME/ChiefOfStaff"; REPO="$ROOT/.backup-repo"; SVC="chief-of-staff-backup"; COMMIT=""; APPLY=0
+while [ $# -gt 0 ]; do case "$1" in --commit) COMMIT="$2"; shift 2;; --apply) APPLY=1; shift;; *) echo "usage: restore [--commit sha] [--apply]"; exit 2;; esac; done
+KEY=$(security find-generic-password -a "$USER" -s "$SVC" -w) 
+git -C "$REPO" pull -q 2>/dev/null || true
+OUT="$ROOT/.restore-$(date +%Y%m%d-%H%M%S)"; mkdir -m 700 "$OUT"
+if [ -n "$COMMIT" ]; then git -C "$REPO" show "$COMMIT:backup.tgz.enc" > "$OUT/b.enc"; else cp "$REPO/backup.tgz.enc" "$OUT/b.enc"; fi
+COS_KEY="$KEY" openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:COS_KEY -in "$OUT/b.enc" -out "$OUT/b.tgz"
+tar -C "$OUT" -xzf "$OUT/b.tgz" && rm "$OUT/b.enc" "$OUT/b.tgz"
+sqlite3 "$OUT/cos.db" "PRAGMA integrity_check;" | grep -q ok && echo "✓ decrypted + DB integrity ok → $OUT"
+if [ "$APPLY" = 1 ]; then
+  cp "$OUT/cos.db" "$ROOT/data/cos.db"; for f in profile.md config.json state.json todos.json; do [ -f "$OUT/$f" ] && cp "$OUT/$f" "$ROOT/$f"; done
+  chmod 600 "$ROOT"/data/cos.db "$ROOT"/*.json "$ROOT/profile.md"; echo "✓ restored into $ROOT (restart: launchctl kickstart -k gui/$(id -u)/com.chiefofstaff.server)"
+fi

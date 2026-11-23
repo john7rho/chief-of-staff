@@ -1,0 +1,22 @@
+#!/bin/bash
+# Encrypted backup of the private data to a PRIVATE git repo.
+# Contents: SQLite DB + profile/config/state/todos. Excludes OAuth tokens, app secrets, photos, logs.
+# Encryption: AES-256 (openssl, PBKDF2 200k iterations); key lives in the macOS Keychain
+# (service "chief-of-staff-backup"). Without that key the backup is unreadable — keep a copy in a password manager.
+set -euo pipefail
+ROOT="$HOME/ChiefOfStaff"; REPO="$ROOT/.backup-repo"; SVC="chief-of-staff-backup"
+KEY=$(security find-generic-password -a "$USER" -s "$SVC" -w 2>/dev/null) || { echo "no backup key in Keychain ($SVC)" >&2; exit 1; }
+[ -d "$REPO/.git" ] || { echo "backup repo missing at $REPO" >&2; exit 1; }
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT; chmod 700 "$TMP"
+mkdir -p "$TMP/payload"
+sqlite3 "$ROOT/data/cos.db" ".backup '$TMP/payload/cos.db'"          # consistent snapshot even while in use
+for f in profile.md config.json state.json todos.json; do [ -f "$ROOT/$f" ] && cp "$ROOT/$f" "$TMP/payload/"; done
+tar -C "$TMP/payload" -czf "$TMP/backup.tgz" .
+COS_KEY="$KEY" openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:COS_KEY -in "$TMP/backup.tgz" -out "$REPO/backup.tgz.enc"
+shasum -a 256 "$TMP/backup.tgz" | cut -d' ' -f1 > "$REPO/backup.sha256"
+cd "$REPO"
+git add backup.tgz.enc backup.sha256
+if git diff --cached --quiet; then echo "no changes since last backup"; exit 0; fi
+git -c user.name=john7rho -c user.email=55637821+john7rho@users.noreply.github.com commit -q -m "backup $(date +%Y-%m-%d)"
+git push -q origin HEAD 2>&1 | tail -1 || true
+echo "backed up $(du -h "$REPO/backup.tgz.enc" | cut -f1) → $(git remote get-url origin | sed 's#https://github.com/##')"

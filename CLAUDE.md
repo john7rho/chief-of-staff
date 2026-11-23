@@ -144,6 +144,10 @@ After any change, the dashboard picks it up within 30 seconds — no restart nee
 - The server listens to the meter's Bluetooth broadcasts every 5 min (no account/cloud): `curl -s 127.0.0.1:8787/api/air`
   → `{co2, temp_c, temp_f, humidity, battery, at, stale}`; history in `data/cos.db` → `air_readings`. Manual read: `bin/airmon`.
 - CO₂ guide: < 800 fresh · 800–1200 ok · 1200–2000 stuffy (dashboard banner + one notification) · > 2000 poor.
+- **CO₂ alarm:** at ≥ `air_monitor.co2_alarm_ppm` (1500) the Mac plays an audible alarm (Sosumi ×9) **only while the owner
+  is awake** (outside `sleep.bedtime`–`wake`) and not `away`; repeats every 15 min while still high. Snooze 1 h from the
+  dashboard Air card (`POST /api/air/snooze`). Tune or disable via `config.json` → `air_monitor`
+  (`co2_alarm`, `co2_alarm_ppm`, `co2_alarm_repeat_min`, `co2_alert_ppm`).
 - Use it proactively: CO₂ climbing in the evening → suggest airing the room before bed; very warm/cold room → mention it
   alongside tonight's BedJet plan; battery < 15% → add a to-do to change it.
 

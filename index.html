@@ -57,14 +57,14 @@
 
   /* ===== grid ===== */
   main { display: grid; gap: var(--gap); align-items: start;
-    grid-template-columns: 1fr; grid-template-areas: "now" "sleep" "day" "body" "food" "prio" "todo" "music" "up" "inbox"; }
+    grid-template-columns: 1fr; grid-template-areas: "now" "sleep" "day" "air" "body" "food" "prio" "todo" "music" "up" "inbox"; }
   @media (min-width: 640px) { main { grid-template-columns: 1fr 1fr;
-    grid-template-areas: "now sleep" "day day" "body food" "prio todo" "music up" "inbox inbox"; } }
+    grid-template-areas: "now sleep" "day day" "air body" "food prio" "todo music" "up up" "inbox inbox"; } }
   @media (min-width: 1080px) { main { grid-template-columns: 1.2fr 1fr 1fr;
-    grid-template-areas: "now sleep sleep" "day day day" "body food prio" "todo music up" "inbox inbox inbox"; } }
+    grid-template-areas: "now sleep sleep" "day day day" "air body food" "prio todo music" "up up inbox"; } }
   #now { grid-area: now; } #sleep { grid-area: sleep; } #day { grid-area: day; } #prioCard { grid-area: prio; }
   #todoCard { grid-area: todo; } #spotify { grid-area: music; } #upCard { grid-area: up; } #inboxCard { grid-area: inbox; }
-  #bodyCard { grid-area: body; } #foodCard { grid-area: food; }
+  #bodyCard { grid-area: body; } #airCard { grid-area: air; } #foodCard { grid-area: food; }
 
   /* ===== now ===== */
   #now .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; color: var(--dim); }
@@ -147,6 +147,19 @@
   .foods li .fk { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
   .foods li .x { opacity: 0; color: var(--dim); font-size: 11px; } .foods li:hover .x { opacity: 1; }
   #addFood { margin-top: 10px; }
+
+  /* ===== air ===== */
+  .airtop { display: flex; gap: 16px; align-items: center; }
+  .airside { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .airside .row { display: flex; gap: 18px; }
+  .airside .row div { display: flex; flex-direction: column; line-height: 1.15; }
+  .airside .row b { font-size: 20px; font-weight: 200; } .airside .row span { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+  .spark { width: 100%; height: 46px; margin-top: 12px; display: block; overflow: visible; }
+  .spark .ln { fill: none; stroke: var(--fg); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .spark .ar { fill: var(--faint); } .spark .th { stroke: var(--lo); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+  .sparkax { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim); margin-top: 3px; }
+  .airbtn { margin-top: 10px; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 99px; background: var(--fg); color: var(--bg); }
+  .airnote { font-size: 11px; color: var(--dim); margin-top: 8px; }
 
   /* ===== lists ===== */
   ol.prio { list-style: none; counter-reset: p; display: flex; flex-direction: column; gap: 9px; }
@@ -297,6 +310,7 @@
       <div class="ticks" id="ticks"></div>
       <div class="upnext" id="upnext"></div>
     </section>
+    <section class="card" id="airCard"><h2><span><span class="hi">🫧</span> Room air</span> <small id="airAt"></small></h2><div id="airBody"><div class="empty">Waiting for the CO₂ meter…</div></div></section>
     <section class="card" id="bodyCard"><h2><span><span class="hi">💪</span> Body</span> <small id="bodyDay"></small></h2><div id="bodyBody"></div></section>
     <section class="card" id="foodCard"><h2><span><span class="hi">🥗</span> Food</span> <small id="foodPending"></small></h2><div id="foodBody"></div>
       <ul class="foods" id="foods"></ul><input id="addFood" class="field" placeholder="+ Log food, e.g. 'chicken burrito + coke'"></section>
@@ -531,7 +545,31 @@ function renderAir() {
   $("room").style.opacity = airD.stale ? .45 : 1;
   $("room").title = `Room air · ${new Date(airD.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · battery ${airD.battery}%`;
 }
-async function airRefresh() { airD = await getJSON("/api/air", null); renderAir(); renderAlerts(); }
+let airHist = [];
+function renderAirCard() {
+  if (!airD || airD.error) return;
+  const c = airD.co2, max = 2000;
+  let spark = "";
+  const pts = airHist.filter(r => r.co2 > 0);
+  if (pts.length > 1) {
+    const t0 = new Date(pts[0].at), t1 = new Date(pts[pts.length - 1].at), hi = Math.max(max, ...pts.map(p => p.co2)), lo = 400;
+    const X = t => 100 * (new Date(t) - t0) / Math.max(1, t1 - t0), Y = v => 46 - 46 * (Math.min(v, hi) - lo) / (hi - lo);
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${X(p.at).toFixed(2)},${Y(p.co2).toFixed(1)}`).join(" ");
+    spark = `<svg class="spark" viewBox="0 0 100 46" preserveAspectRatio="none">
+      <path class="ar" d="${d} L100,46 L0,46 Z"/><line class="th" x1="0" x2="100" y1="${Y(airD.alert_ppm)}" y2="${Y(airD.alert_ppm)}"/><path class="ln" d="${d}"/></svg>
+      <div class="sparkax"><span>${t0.toLocaleTimeString([], { hour: "numeric" })}</span><span>- - ${airD.alert_ppm} ppm</span><span>now</span></div>`;
+  } else spark = `<div class="airnote">Trend appears after a few readings (every 5 min).</div>`;
+  const snoozed = airD.snoozed_until * 1000 > Date.now();
+  $("airBody").innerHTML = `<div class="airtop">${ring(c, max, scoreColor(c < 800 ? 100 : c < 1200 ? 70 : c < 2000 ? 40 : 10), "CO₂ · " + co2Word(c), "ppm")}
+    <div class="airside"><div class="row"><div><b class="num">${Math.round(airD.temp_f)}°</b><span>inside</span></div>
+      <div><b class="num">${airD.humidity}%</b><span>humidity</span></div><div><b class="num">${airD.battery}%</b><span>battery</span></div></div></div></div>
+    ${spark}
+    ${airD.alarming && !snoozed ? `<button class="airbtn" id="airSnooze">🔕 Snooze CO₂ alarm 1h</button>` : ""}
+    <div class="airnote">🔔 Alarm above ${airD.alarm_ppm} ppm while you're awake${snoozed ? " · snoozed until " + new Date(airD.snoozed_until * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}</div>`;
+  $("airAt").textContent = airD.stale ? "⚠ no recent reading" : new Date(airD.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const b = $("airSnooze"); if (b) b.onclick = async () => { await post("/api/air/snooze"); airRefresh(); };
+}
+async function airRefresh() { airD = await getJSON("/api/air", null); airHist = await getJSON("/api/air/history?hours=24", []); renderAir(); renderAirCard(); renderAlerts(); }
 
 function renderAlerts() {
   const now = new Date();

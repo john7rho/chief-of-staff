@@ -58,6 +58,9 @@
   ],
   "air_monitor": {
     "enabled": false,
-    "co2_alert_ppm": 1200
+    "co2_alert_ppm": 1200,
+    "co2_alarm": true,
+    "co2_alarm_ppm": 1500,
+    "co2_alarm_repeat_min": 15
   }
 }

@@ -793,6 +793,8 @@ def air_loop():
                 d = json.loads(r.stdout or "{}")
                 if "co2" in d:
                     d.pop("mac", None)   # device identifier stays out of the API/logs
+                    if d.get("battery", -1) < 0 and _air["data"]:   # packet without battery info: keep last known
+                        d["battery"] = _air["data"].get("battery", -1)
                     d["temp_f"] = round(d["temp_c"] * 9 / 5 + 32, 1)
                     d["at"] = now().isoformat(timespec="seconds")
                     _air.update(data=d, at=time.time())
@@ -805,22 +807,58 @@ def air_loop():
 
 
 def co2_nudge(d):
-    """One notification when CO2 crosses the stuffy line (not again until it recovers)."""
-    lim = (load(CONFIG, {}).get("air_monitor") or {}).get("co2_alert_ppm", 1200)
+    """Notification at co2_alert_ppm; audible alarm at co2_alarm_ppm during waking hours (repeats every
+    co2_alarm_repeat_min while still high, unless snoozed). Never during the sleep window or when away."""
+    cfg = load(CONFIG, {}).get("air_monitor") or {}
+    warn, alarm = cfg.get("co2_alert_ppm", 1200), cfg.get("co2_alarm_ppm", 1500)
+    repeat = cfg.get("co2_alarm_repeat_min", 15) * 60
+    st = load(STATE, {})
+    sl = st.get("sleep") or {}
+    bed, wake = parse(sl.get("bedtime")), parse(sl.get("wake")) or parse((st.get("alarm") or {}).get("time"))
+    n = now()
+    asleep = bool(bed and wake and bed <= n < wake)
     with lock:
         rt = load(RUNTIME, {})
-        high = d["co2"] >= lim
-        if high and not rt.get("co2_high"):
+        high = d["co2"] >= warn
+        if high and not rt.get("co2_high") and not asleep:
             notify("Stuffy air", f"CO₂ is {d['co2']} ppm. Open a window or turn on ventilation.", "Pop")
         rt["co2_high"] = high
+        snoozed = time.time() < rt.get("co2_snooze_until", 0)
+        if (d["co2"] >= alarm and not asleep and not sl.get("away") and not snoozed
+                and cfg.get("co2_alarm", True) and time.time() - rt.get("co2_alarm_at", 0) >= repeat):
+            rt["co2_alarm_at"] = time.time()
+            rt["co2_alarming"] = True
+            log(f"co2 alarm: {d['co2']} ppm")
+            threading.Thread(target=co2_sound, args=(d["co2"],), daemon=True).start()
+        if d["co2"] < alarm:
+            rt["co2_alarming"] = False
         save(RUNTIME, rt)
+
+
+def co2_sound(ppm):
+    notify("🫧 CO₂ alarm", f"CO₂ is {ppm} ppm. Air out the room now.", "Sosumi")
+    subprocess.run(["osascript", "-e", "set volume without output muted"], capture_output=True)
+    subprocess.run(["osascript", "-e", "set volume output volume 55"], capture_output=True)
+    for _ in range(3):  # short, distinct pattern, unlike the wake alarm
+        for _ in range(3):
+            subprocess.run(["afplay", "/System/Library/Sounds/Sosumi.aiff"], capture_output=True)
+        time.sleep(1.2)
 
 
 def air():
     d = _air["data"]
     if not d:
         return {"error": "no reading yet"}
-    return {**d, "stale": time.time() - _air["at"] > 1200}
+    rt = load(RUNTIME, {})
+    cfg = load(CONFIG, {}).get("air_monitor") or {}
+    return {**d, "stale": time.time() - _air["at"] > 1200, "alarming": bool(rt.get("co2_alarming")),
+            "snoozed_until": rt.get("co2_snooze_until", 0), "alert_ppm": cfg.get("co2_alert_ppm", 1200),
+            "alarm_ppm": cfg.get("co2_alarm_ppm", 1500)}
+
+
+def air_history(hours=24):
+    since = (now() - timedelta(hours=hours)).isoformat()
+    return db_rows("SELECT at, co2, temp_c, humidity FROM air_readings WHERE at >= ? ORDER BY at", (since,))
 
 
 # ---------- mac audio output ----------
@@ -928,6 +966,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.end_headers()
             if u.path == "/api/air":
                 return self.json(air())
+            if u.path == "/api/air/history":
+                return self.json(air_history(min(168, int(qs.get("hours", ["24"])[0] or 24))))
             if u.path == "/api/health":
                 return self.json(health())
             if u.path == "/api/nutrition":
@@ -973,6 +1013,13 @@ class Handler(SimpleHTTPRequestHandler):
             if not cmds:
                 return self.send_error(400)
             threading.Thread(target=bedjet_run, args=(f"manual-{body['action']}", cmds), daemon=True).start()
+            return self.json({"ok": True})
+        if p == "/api/air/snooze":
+            with lock:
+                rt = load(RUNTIME, {})
+                rt["co2_snooze_until"] = time.time() + 3600
+                rt["co2_alarming"] = False
+                save(RUNTIME, rt)
             return self.json({"ok": True})
         if p == "/api/audio/output":
             set_output(body.get("name", ""))

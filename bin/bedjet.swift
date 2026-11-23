@@ -83,7 +83,7 @@ final class BJ: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             if (t1 & 0x80) == 0 { tempC = -tempC }
             let co2 = d.count >= 15 ? (Int(d[13]) << 8) | Int(d[14]) : -1
             var batt = -1
-            if let sd = (ad[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])?[CBUUID(string: "FD3D")], sd.count >= 3 { batt = Int(sd[2] & 0x7F) }
+            if let sd = (ad[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])?[CBUUID(string: "FD3D")], sd.count >= 3, (sd[0] & 0x7F) == 0x35 { batt = Int(sd[2] & 0x7F) }   // 0x35 = Meter Pro CO2 packet
             let mac = d[0..<6].map { String(format: "%02x", $0) }.joined(separator: ":")
             let json = "{\"mac\":\"\(mac)\",\"temp_c\":\(String(format: "%.1f", tempC)),\"humidity\":\(Int(h & 0x7F)),\"co2\":\(co2),\"battery\":\(batt),\"rssi\":\(rssi)}"
             finish(json, 0)

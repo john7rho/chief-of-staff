@@ -164,6 +164,22 @@
   },
   {
     "type": "staticButton",
+    "title": "⏭",
+    "width": 44,
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "spotify-next"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "staticButton",
     "title": "🖥️",
     "actions": [
       {
@@ -190,18 +206,57 @@
     "align": "right"
   },
   {
-    "type": "mute",
-    "width": 36,
-    "align": "right"
+    "type": "staticButton",
+    "title": "🔉",
+    "width": 44,
+    "align": "right",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "vol-down"
+        ]
+      }
+    ]
   },
   {
-    "type": "volumeDown",
-    "width": 36,
-    "align": "right"
+    "type": "shellScriptTitledButton",
+    "width": 64,
+    "align": "right",
+    "refreshInterval": 2,
+    "source": {
+      "inline": "/bin/bash $HOME/ChiefOfStaff/bin/touchbar vol"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "mute"
+        ]
+      }
+    ]
   },
   {
-    "type": "volumeUp",
-    "width": 36,
-    "align": "right"
+    "type": "staticButton",
+    "title": "🔊",
+    "width": 44,
+    "align": "right",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "vol-up"
+        ]
+      }
+    ]
   }
 ]

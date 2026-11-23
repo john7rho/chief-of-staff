@@ -1,6 +1,6 @@
 #!/bin/bash
 # Helper for Touch Bar buttons (MTMR). Talks to the local dashboard server.
-# usage: touchbar air | recovery | spotify-toggle | post <path> [json]
+# usage: touchbar air | recovery | vol | vol-up | vol-down | mute | spotify-toggle | spotify-next | post <path> [json]
 U=http://127.0.0.1:8787
 PY=/usr/bin/python3; [ -x /usr/local/bin/python3 ] && PY=/usr/local/bin/python3
 post() { curl -s -m 5 -X POST -H "X-CoS: 1" -H "Content-Type: application/json" -d "${2:-{\}}" "$U$1" >/dev/null; }
@@ -17,10 +17,23 @@ try:
     r=json.load(sys.stdin)["whoop"]["recovery"]; print("💪 %d%%" % round(r))
 except Exception: print("💪 —")' ;;
   spotify-toggle)
-    playing=$(curl -s -m 5 "$U/api/spotify/state" | "$PY" -c 'import json,sys
+    # Instant: tell the local Spotify app (it also remote-controls the active Connect device).
+    if pgrep -xq Spotify; then osascript -e 'tell application "Spotify" to playpause'
+    else  # app not running: fall back to the Web API via the local server
+      playing=$(curl -s -m 5 "$U/api/spotify/state" | "$PY" -c 'import json,sys
 try: print(1 if json.load(sys.stdin).get("playing") else 0)
 except Exception: print(0)')
-    if [ "$playing" = 1 ]; then post /api/spotify/cmd '{"action":"pause"}'; else post /api/spotify/cmd '{"action":"play"}'; fi ;;
+      if [ "$playing" = 1 ]; then post /api/spotify/cmd '{"action":"pause"}'; else post /api/spotify/cmd '{"action":"play"}'; fi
+    fi ;;
+  spotify-next) pgrep -xq Spotify && osascript -e 'tell application "Spotify" to next track' || post /api/spotify/cmd '{"action":"next"}' ;;
+  vol-up|vol-down)
+    # Set system volume directly (no simulated media keys → no Accessibility permission, no missed taps)
+    step=6; [ "$1" = vol-down ] && step=-6
+    osascript -e "set v to (output volume of (get volume settings)) + ($step)" \
+              -e 'if v > 100 then set v to 100' -e 'if v < 0 then set v to 0' \
+              -e 'set volume without output muted' -e 'set volume output volume v' ;;
+  mute) osascript -e 'set m to output muted of (get volume settings)' -e 'set volume output muted (not m)' ;;
+  vol) osascript -e 'set s to get volume settings' -e 'if output muted of s then return "🔇"' -e 'return "🔊 " & (output volume of s as text)' ;;
   post) post "$2" "$3" ;;
   *) echo "usage: touchbar air|recovery|spotify-toggle|post <path> [json]" >&2; exit 2 ;;
 esac

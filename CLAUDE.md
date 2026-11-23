@@ -140,7 +140,14 @@ After any change, the dashboard picks it up within 30 seconds — no restart nee
   Keychain key `chief-of-staff-backup` and pushes to the owner's **private** backup repo (`.backup-repo/`).
   `bin/restore` decrypts into a staging folder; `--apply` restores. Never print the key; never push backups to the public repo.
 
-## Music (Spotify) and sound output
+## Room air (SwitchBot Meter Pro CO2, Bluetooth)
+- The server listens to the meter's Bluetooth broadcasts every 5 min (no account/cloud): `curl -s 127.0.0.1:8787/api/air`
+  → `{co2, temp_c, temp_f, humidity, battery, at, stale}`; history in `data/cos.db` → `air_readings`. Manual read: `bin/airmon`.
+- CO₂ guide: < 800 fresh · 800–1200 ok · 1200–2000 stuffy (dashboard banner + one notification) · > 2000 poor.
+- Use it proactively: CO₂ climbing in the evening → suggest airing the room before bed; very warm/cold room → mention it
+  alongside tonight's BedJet plan; battery < 15% → add a to-do to change it.
+
+
 The local server proxies Spotify. When the owner asks to play something, use curl (POSTs need header `X-CoS: 1`):
 - Search: `curl -s "127.0.0.1:8787/api/spotify/search?q=<urlencoded>"` → list of `{kind,name,sub,uri}`
 - Play: `curl -s -X POST -H 'X-CoS: 1' -H 'Content-Type: application/json' 127.0.0.1:8787/api/spotify/cmd -d '{"action":"play_uri","uri":"spotify:track:…"}'`

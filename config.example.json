@@ -55,5 +55,9 @@
   },
   "health_providers": [
     "whoop"
-  ]
+  ],
+  "air_monitor": {
+    "enabled": false,
+    "co2_alert_ppm": 1200
+  }
 }

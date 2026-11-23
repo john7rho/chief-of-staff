@@ -44,3 +44,8 @@ CREATE TABLE IF NOT EXISTS bedjet_runs (
 CREATE TABLE IF NOT EXISTS daily_briefs (
   day TEXT PRIMARY KEY, headline TEXT, priorities TEXT, risks TEXT, events INTEGER, first_event TEXT
 );
+
+-- Room air from a SwitchBot Meter Pro (CO2), read passively over Bluetooth every ~5 min.
+CREATE TABLE IF NOT EXISTS air_readings (
+  at TEXT PRIMARY KEY, co2 INTEGER, temp_c REAL, humidity INTEGER, battery INTEGER
+);

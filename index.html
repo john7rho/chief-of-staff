@@ -208,6 +208,12 @@
   #wx .tmp { font-size: 32px; font-weight: 200; letter-spacing: -1px; line-height: 1; }
   #wx .sub { font-size: 11px; color: var(--dim); line-height: 1.5; }
   #wx .wear { display: inline-flex; align-items: center; gap: 5px; margin-top: 3px; font-size: 11.5px; font-weight: 500; border: 1px solid var(--line); padding: 1px 9px; border-radius: 99px; }
+  #room { display: flex; align-items: center; gap: 14px; padding: 6px 4px 6px 16px; border-left: 1px solid var(--line); }
+  #room:empty { display: none; }
+  #room .rv { display: flex; flex-direction: column; line-height: 1.15; }
+  #room .rv b { font-size: 20px; font-weight: 200; letter-spacing: -.5px; }
+  #room .rv span { font-size: 10px; color: var(--dim); letter-spacing: .6px; text-transform: uppercase; }
+  #room .co2 b { font-weight: 300; }
   .rainbars { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-top: 4px; }
   .rainbars i { width: 4px; border-radius: 1px; background: var(--fg); opacity: .7; min-height: 2px; }
 
@@ -277,6 +283,7 @@
     <div><div id="clock" class="num">--:--</div><div id="date"></div></div>
     <div id="headline"></div>
     <div id="wx"></div>
+    <div id="room" title="Room air (SwitchBot Meter Pro CO2)"></div>
   </header>
 
   <div id="alerts"></div>
@@ -514,6 +521,18 @@ function renderWx() {
       <div class="wear">${wearIcon(wx.wear)} ${esc(wx.wear.split(" · ")[0])}${umbrella}</div>
       ${wx.hours && wx.hours.some(h => h.p >= 20) ? `<div class="rainbars">${bars}</div>` : ""}</div>`;
 }
+let airD = null;
+const co2Word = c => c < 800 ? "fresh" : c < 1200 ? "ok" : c < 2000 ? "stuffy" : "poor";
+function renderAir() {
+  if (!airD || airD.error) { $("room").innerHTML = ""; return; }
+  $("room").innerHTML = `<div class="rv co2"><b class="num">${airD.co2}</b><span>CO₂ ppm · ${co2Word(airD.co2)}</span></div>
+    <div class="rv"><b class="num">${Math.round(airD.temp_f)}°</b><span>inside</span></div>
+    <div class="rv"><b class="num">${airD.humidity}%</b><span>humidity</span></div>`;
+  $("room").style.opacity = airD.stale ? .45 : 1;
+  $("room").title = `Room air · ${new Date(airD.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · battery ${airD.battery}%`;
+}
+async function airRefresh() { airD = await getJSON("/api/air", null); renderAir(); renderAlerts(); }
+
 function renderAlerts() {
   const now = new Date();
   const risks = (state.risks || []).map(r => ({ icon: r.icon || "⚠️", title: r.title, sub: r.detail, act: r.action, sev: r.severity || "severe" }));
@@ -522,6 +541,9 @@ function renderAlerts() {
     .map(a => ({ icon: /flood/i.test(a.event) ? "🌊" : /surf|wave/i.test(a.event) ? "🌊" : /heat/i.test(a.event) ? "🥵" : /wind/i.test(a.event) ? "💨" : /fire|smoke|air/i.test(a.event) ? "🔥" : /storm|thunder|tornado/i.test(a.event) ? "⛈️" : /winter|snow|ice|freeze/i.test(a.event) ? "🥶" : "⚠️",
       title: a.event, sub: `${a.onset ? tm(new Date(a.onset)) + " " + new Date(a.onset).toLocaleDateString([], { weekday: "short" }) : ""} → ${a.ends ? new Date(a.ends).toLocaleDateString([], { weekday: "short" }) + " " + tm(new Date(a.ends)) : ""}`,
       sev: (a.severity || "").toLowerCase(), tip: a.summary }));
+  if (airD && !airD.error && !airD.stale && airD.co2 >= 1200)
+    risks.push({ icon: "🫧", title: `Stuffy air: CO₂ ${airD.co2} ppm`, sub: airD.co2 >= 2000 ? "Poor air can cause headaches and grogginess" : "Above 1,200 ppm, focus and sleep quality drop",
+      act: "Open a window", sev: airD.co2 >= 2000 ? "severe" : "moderate" });
   const all = risks.concat(wxa.filter(a => a.sev === "extreme" || a.sev === "severe"));
   $("alerts").innerHTML = all.map(a => `<div class="alert ${esc(a.sev)}" title="${esc(a.tip || "")}"><span class="ai">${a.icon}</span>
     <div><b>${esc(a.title)}</b><div class="as">${esc(a.sub || "")}</div></div>${a.act ? `<span class="act">👉 ${esc(a.act)}</span>` : ""}</div>`).join("");
@@ -644,7 +666,7 @@ function spRender() {
 }
 async function spRefresh() { sp = await getJSON("/api/spotify/state", { connected: false }); spOut = await getJSON("/api/audio/outputs", {}); spRender(); }
 
-refresh(); pollRing(); spRefresh(); wxRefresh(); healthRefresh(); foodRefresh(); setInterval(healthRefresh, 10 * 60000); setInterval(foodRefresh, 30000); setInterval(wxRefresh, 10 * 60000);
+refresh(); pollRing(); spRefresh(); wxRefresh(); healthRefresh(); foodRefresh(); airRefresh(); setInterval(airRefresh, 120000); setInterval(healthRefresh, 10 * 60000); setInterval(foodRefresh, 30000); setInterval(wxRefresh, 10 * 60000);
 setInterval(render, 15000); setInterval(refresh, 30000); setInterval(pollRing, 2000); setInterval(spRefresh, 5000);
 </script>
 </body>

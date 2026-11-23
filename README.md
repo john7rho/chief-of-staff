@@ -20,6 +20,7 @@ sends nudges, and talks to your gadgets.
 | 📷 **Room check** | Webcam snapshot compared with a baseline photo, on request |
 | 💬 **Texts** | iMessage/SMS from the Mac, **only after you approve each message** |
 | 🖥️ **Second Mac** | Sleeps another Mac's display at bedtime over SSH |
+| 🫧 **Room air** | SwitchBot Meter Pro CO2 read passively over Bluetooth: CO₂, temperature, humidity, stuffy-air alerts |
 | 💪 **WHOOP** | Recovery, strain, HRV, sleep (direct OAuth) feed bedtime suggestions |
 | 🥗 **Food** | Log meals by chat, photo, or dashboard; Claude estimates macros |
 | 🗄️ **History** | Local SQLite DB with optional encrypted, private GitHub backups |

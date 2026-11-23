@@ -781,6 +781,48 @@ def alarm_event(kind):
         log(f"alarm_event error: {e}")
 
 
+# ---------- room air (SwitchBot Meter Pro CO2 over BLE) ----------
+_air = {"data": None, "at": 0}
+
+
+def air_loop():
+    while True:
+        try:
+            if (load(CONFIG, {}).get("air_monitor") or {}).get("enabled", True):
+                r = subprocess.run([str(ROOT / "bin" / "airmon")], capture_output=True, text=True, timeout=60)
+                d = json.loads(r.stdout or "{}")
+                if "co2" in d:
+                    d.pop("mac", None)   # device identifier stays out of the API/logs
+                    d["temp_f"] = round(d["temp_c"] * 9 / 5 + 32, 1)
+                    d["at"] = now().isoformat(timespec="seconds")
+                    _air.update(data=d, at=time.time())
+                    db_exec("INSERT OR REPLACE INTO air_readings (at, co2, temp_c, humidity, battery) VALUES (?,?,?,?,?)",
+                            (d["at"], d["co2"], d["temp_c"], d["humidity"], d["battery"]))
+                    co2_nudge(d)
+        except Exception as e:
+            log(f"air error: {e}")
+        time.sleep(300)
+
+
+def co2_nudge(d):
+    """One notification when CO2 crosses the stuffy line (not again until it recovers)."""
+    lim = (load(CONFIG, {}).get("air_monitor") or {}).get("co2_alert_ppm", 1200)
+    with lock:
+        rt = load(RUNTIME, {})
+        high = d["co2"] >= lim
+        if high and not rt.get("co2_high"):
+            notify("Stuffy air", f"CO₂ is {d['co2']} ppm. Open a window or turn on ventilation.", "Pop")
+        rt["co2_high"] = high
+        save(RUNTIME, rt)
+
+
+def air():
+    d = _air["data"]
+    if not d:
+        return {"error": "no reading yet"}
+    return {**d, "stale": time.time() - _air["at"] > 1200}
+
+
 # ---------- mac audio output ----------
 SAS = shutil.which("SwitchAudioSource") or "/usr/local/bin/SwitchAudioSource"
 
@@ -884,6 +926,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_response(302)
                 self.send_header("Location", f"http://localhost:{PORT}/")
                 return self.end_headers()
+            if u.path == "/api/air":
+                return self.json(air())
             if u.path == "/api/health":
                 return self.json(health())
             if u.path == "/api/nutrition":
@@ -992,6 +1036,7 @@ def main():
     # keep display + system awake while this runs
     caff = subprocess.Popen(["caffeinate", "-dimsu", "-w", str(os.getpid())])
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=air_loop, daemon=True).start()
     log(f"Chief of Staff running on http://localhost:{PORT} (caffeinate pid {caff.pid})")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 

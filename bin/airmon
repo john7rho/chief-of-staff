@@ -1,0 +1,5 @@
+#!/bin/bash
+# Read the SwitchBot Meter Pro (CO2) over Bluetooth (passive). Prints JSON.
+OUT=$(mktemp -t airmon); trap 'rm -f "$OUT"' EXIT
+open -W -n "$HOME/ChiefOfStaff/bin/BedJetCtl.app" --args --out "$OUT" switchbot-read
+cat "$OUT"; grep -q '"co2"' "$OUT"

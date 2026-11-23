@@ -152,6 +152,11 @@ After any change, the dashboard picks it up within 30 seconds — no restart nee
   alongside tonight's BedJet plan; battery < 15% → add a to-do to change it.
 
 
+## Touch Bar (MTMR)
+- Layout: `~/Library/Application Support/MTMR/items.json` (template `touchbar.example.json`); buttons call
+  `bin/touchbar`. Edit the JSON when the owner wants buttons changed; MTMR reloads it automatically.
+
+## Music (Spotify) and sound output
 The local server proxies Spotify. When the owner asks to play something, use curl (POSTs need header `X-CoS: 1`):
 - Search: `curl -s "127.0.0.1:8787/api/spotify/search?q=<urlencoded>"` → list of `{kind,name,sub,uri}`
 - Play: `curl -s -X POST -H 'X-CoS: 1' -H 'Content-Type: application/json' 127.0.0.1:8787/api/spotify/cmd -d '{"action":"play_uri","uri":"spotify:track:…"}'`

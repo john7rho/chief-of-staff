@@ -1,0 +1,207 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "staticButton",
+    "title": "🤖 Claude",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/usr/bin/open",
+        "shellArguments": [
+          "-a",
+          "Claude"
+        ]
+      }
+    ],
+    "width": 90
+  },
+  {
+    "type": "staticButton",
+    "title": "⏰",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/snooze"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "staticButton",
+    "title": "✅",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/dismiss"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "staticButton",
+    "title": "🔥",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/bedjet",
+          "{\"action\":\"warm\"}"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "staticButton",
+    "title": "❄️",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/bedjet",
+          "{\"action\":\"cool\"}"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "staticButton",
+    "title": "⏻",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/bedjet",
+          "{\"action\":\"off\"}"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "width": 110,
+    "refreshInterval": 120,
+    "source": {
+      "inline": "/bin/bash $HOME/ChiefOfStaff/bin/touchbar air"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/air/snooze"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "width": 74,
+    "refreshInterval": 900,
+    "source": {
+      "inline": "/bin/bash $HOME/ChiefOfStaff/bin/touchbar recovery"
+    },
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/usr/bin/open",
+        "shellArguments": [
+          "http://127.0.0.1:8787"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "staticButton",
+    "title": "⏯",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "spotify-toggle"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "staticButton",
+    "title": "🖥️",
+    "actions": [
+      {
+        "trigger": "singleTap",
+        "action": "shellScript",
+        "executablePath": "/bin/bash",
+        "shellArguments": [
+          "$HOME/ChiefOfStaff/bin/touchbar",
+          "post",
+          "/api/studio/sleep-display"
+        ]
+      }
+    ],
+    "width": 44
+  },
+  {
+    "type": "brightnessDown",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "brightnessUp",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "mute",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "volumeDown",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "volumeUp",
+    "width": 36,
+    "align": "right"
+  }
+]

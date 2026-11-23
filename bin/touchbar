@@ -1,0 +1,26 @@
+#!/bin/bash
+# Helper for Touch Bar buttons (MTMR). Talks to the local dashboard server.
+# usage: touchbar air | recovery | spotify-toggle | post <path> [json]
+U=http://127.0.0.1:8787
+PY=/usr/bin/python3; [ -x /usr/local/bin/python3 ] && PY=/usr/local/bin/python3
+post() { curl -s -m 5 -X POST -H "X-CoS: 1" -H "Content-Type: application/json" -d "${2:-{\}}" "$U$1" >/dev/null; }
+case "$1" in
+  air)       curl -s -m 3 "$U/api/air" | "$PY" -c '
+import json,sys
+try:
+    d=json.load(sys.stdin); c=d["co2"]; t=round(d["temp_f"])
+    print("🫧 %d · %d°%s" % (c, t, " ⚠" if c >= 1200 else ""))
+except Exception: print("🫧 —")' ;;
+  recovery)  curl -s -m 5 "$U/api/health" | "$PY" -c '
+import json,sys
+try:
+    r=json.load(sys.stdin)["whoop"]["recovery"]; print("💪 %d%%" % round(r))
+except Exception: print("💪 —")' ;;
+  spotify-toggle)
+    playing=$(curl -s -m 5 "$U/api/spotify/state" | "$PY" -c 'import json,sys
+try: print(1 if json.load(sys.stdin).get("playing") else 0)
+except Exception: print(0)')
+    if [ "$playing" = 1 ]; then post /api/spotify/cmd '{"action":"pause"}'; else post /api/spotify/cmd '{"action":"play"}'; fi ;;
+  post) post "$2" "$3" ;;
+  *) echo "usage: touchbar air|recovery|spotify-toggle|post <path> [json]" >&2; exit 2 ;;
+esac

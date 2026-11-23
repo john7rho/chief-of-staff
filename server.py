@@ -1032,10 +1032,12 @@ class Handler(SimpleHTTPRequestHandler):
                 rt.update(ringing=False, snooze_until=None)
                 save(RUNTIME, rt)
             elif p == "/api/snooze":
+                rt = load(RUNTIME, {})
+                if not rt.get("ringing"):          # nothing ringing: don't schedule a surprise alarm
+                    return self.json({"ok": False, "reason": "no alarm ringing"})
                 stop_ring()
                 alarm_event("snoozed")
                 mins = load(CONFIG, {}).get("snooze_minutes", 9)
-                rt = load(RUNTIME, {})
                 rt.update(ringing=False, snooze_until=(now() + timedelta(minutes=mins)).isoformat())
                 save(RUNTIME, rt)
             elif p == "/api/test-alarm":

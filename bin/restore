@@ -5,12 +5,34 @@ set -euo pipefail
 ROOT="$HOME/ChiefOfStaff"; REPO="$ROOT/.backup-repo"; SVC="chief-of-staff-backup"; COMMIT=""; APPLY=0
 while [ $# -gt 0 ]; do case "$1" in --commit) COMMIT="$2"; shift 2;; --apply) APPLY=1; shift;; *) echo "usage: restore [--commit sha] [--apply]"; exit 2;; esac; done
 KEY=$(security find-generic-password -a "$USER" -s "$SVC" -w) 
-git -C "$REPO" pull -q 2>/dev/null || true
-OUT="$ROOT/.restore-$(date +%Y%m%d-%H%M%S)"; mkdir -m 700 "$OUT"
-if [ -n "$COMMIT" ]; then git -C "$REPO" show "$COMMIT:backup.tgz.enc" > "$OUT/b.enc"; else cp "$REPO/backup.tgz.enc" "$OUT/b.enc"; fi
+if ! git -C "$REPO" pull -q --ff-only; then
+  echo "warning: could not refresh backup repository; using a locally available revision" >&2
+fi
+REV=$(git -C "$REPO" rev-parse --verify --end-of-options "${COMMIT:-HEAD}^{commit}")
+OUT=$(mktemp -d "$ROOT/.restore-$(date +%Y%m%d-%H%M%S).XXXXXX")
+# Failed validation must neither leave a plaintext archive nor reach --apply.
+trap 'rm -rf -- "$OUT"' EXIT
+git -C "$REPO" show "$REV:backup.tgz.enc" > "$OUT/b.enc"
+git -C "$REPO" show "$REV:backup.sha256" > "$OUT/b.sha256"
 COS_KEY="$KEY" openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:COS_KEY -in "$OUT/b.enc" -out "$OUT/b.tgz"
-tar -C "$OUT" -xzf "$OUT/b.tgz" && rm "$OUT/b.enc" "$OUT/b.tgz"
-sqlite3 "$OUT/cos.db" "PRAGMA integrity_check;" | grep -q ok && echo "✓ decrypted + DB integrity ok → $OUT"
+EXPECTED=$(cat "$OUT/b.sha256")
+ACTUAL=$(shasum -a 256 "$OUT/b.tgz")
+if ! [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]] || [[ "$EXPECTED" != "${ACTUAL%% *}" ]]; then
+  echo "restore refused: backup checksum mismatch ($REV)" >&2
+  exit 1
+fi
+tar -C "$OUT" -xzf "$OUT/b.tgz"
+rm "$OUT/b.enc" "$OUT/b.tgz" "$OUT/b.sha256"
+if [ ! -f "$OUT/cos.db" ] || [ ! -s "$OUT/cos.db" ]; then
+  echo "restore refused: staged database missing or empty ($REV)" >&2
+  exit 1
+fi
+if ! CHECK=$(sqlite3 -batch -bail -readonly "$OUT/cos.db" "PRAGMA integrity_check;") || [[ "$CHECK" != ok ]]; then
+  echo "restore refused: staged database failed integrity check ($REV)" >&2
+  exit 1
+fi
+trap - EXIT
+echo "✓ decrypted + DB integrity ok ($REV) → $OUT"
 if [ "$APPLY" = 1 ]; then
   cp "$OUT/cos.db" "$ROOT/data/cos.db"; for f in profile.md config.json state.json todos.json; do [ -f "$OUT/$f" ] && cp "$OUT/$f" "$ROOT/$f"; done
   chmod 600 "$ROOT"/data/cos.db "$ROOT"/*.json "$ROOT/profile.md"; echo "✓ restored into $ROOT (restart: launchctl kickstart -k gui/$(id -u)/com.chiefofstaff.server)"
